@@ -1,21 +1,32 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { Mail, ArrowLeft, Sparkles, Send, CheckCircle2 } from "lucide-react";
+import { Mail, ArrowLeft, Sparkles, Send, CheckCircle2, Loader2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import AuthLayout from "@/components/AuthLayout";
 import { Field } from "@/pages/Login";
+import { toast } from "sonner";
 
 export default function ForgotPassword() {
+  const { resetPassword } = useAuth();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) { setError("Email is required"); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError("Enter a valid email"); return; }
     setError("");
-    setSent(true);
+    setLoading(true);
+    const { error: err } = await resetPassword(email);
+    setLoading(false);
+    if (err) {
+      toast.error(err);
+    } else {
+      setSent(true);
+    }
   };
 
   return (
@@ -26,7 +37,6 @@ export default function ForgotPassword() {
         transition={{ duration: 0.35 }}
         className="space-y-8"
       >
-        {/* Mobile logo */}
         <div className="lg:hidden flex items-center gap-2.5 mb-2">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <Sparkles className="w-4 h-4 text-primary-foreground" />
@@ -61,10 +71,10 @@ export default function ForgotPassword() {
 
               <button
                 type="submit"
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60"
               >
-                Send Reset Link
-                <Send className="w-3.5 h-3.5" />
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Send Reset Link <Send className="w-3.5 h-3.5" /></>}
               </button>
             </form>
           </>
