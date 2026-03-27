@@ -7,6 +7,8 @@ import AppLayout from "@/components/AppLayout";
 import Onboarding from "@/pages/Onboarding";
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
+import SignUp from "@/pages/SignUp";
+import ForgotPassword from "@/pages/ForgotPassword";
 import Dashboard from "@/pages/Dashboard";
 import Tasks from "@/pages/Tasks";
 import Reminders from "@/pages/Reminders";
