@@ -1,16 +1,20 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Mail, Lock, User, Sparkles, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock, User, Sparkles, ArrowRight, Loader2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import AuthLayout from "@/components/AuthLayout";
 import { Field, SocialButton, GoogleIcon, AppleIcon } from "@/pages/Login";
+import { toast } from "sonner";
 
 export default function SignUp() {
   const navigate = useNavigate();
+  const { signUpWithEmail, signInWithGoogle, signInWithApple } = useAuth();
   const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
   const [showPw, setShowPw] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
 
   const set = (key: string) => (v: string) => setForm((f) => ({ ...f, [key]: v }));
 
@@ -26,9 +30,18 @@ export default function SignUp() {
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (validate()) navigate("/dashboard");
+    if (!validate()) return;
+    setLoading(true);
+    const { error } = await signUpWithEmail(form.email, form.password, form.name);
+    setLoading(false);
+    if (error) {
+      toast.error(error);
+    } else {
+      toast.success("Check your email to confirm your account!");
+      navigate("/login");
+    }
   };
 
   return (
@@ -39,7 +52,6 @@ export default function SignUp() {
         transition={{ duration: 0.35 }}
         className="space-y-7"
       >
-        {/* Mobile logo */}
         <div className="lg:hidden flex items-center gap-2.5 mb-2">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <Sparkles className="w-4 h-4 text-primary-foreground" />
@@ -53,13 +65,13 @@ export default function SignUp() {
         </div>
 
         <div className="space-y-2.5">
-          <SocialButton icon={<GoogleIcon />} label="Continue with Google" />
-          <SocialButton icon={<AppleIcon />} label="Continue with Apple" />
+          <SocialButton icon={<GoogleIcon />} label="Continue with Google" onClick={signInWithGoogle} />
+          <SocialButton icon={<AppleIcon />} label="Continue with Apple" onClick={signInWithApple} />
         </div>
 
         <div className="flex items-center gap-3">
           <div className="flex-1 h-px bg-border" />
-          <span className="text-xs text-muted-foreground">or</span>
+          <span className="text-xs text-muted-foreground">or continue with email</span>
           <div className="flex-1 h-px bg-border" />
         </div>
 
@@ -97,10 +109,10 @@ export default function SignUp() {
 
           <button
             type="submit"
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity mt-1"
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60 mt-1"
           >
-            Create Account
-            <ArrowRight className="w-3.5 h-3.5" />
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Create Account <ArrowRight className="w-3.5 h-3.5" /></>}
           </button>
         </form>
 
