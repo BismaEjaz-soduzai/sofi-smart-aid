@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { format, isToday, isFuture, parseISO } from "date-fns";
+import { format, isToday, isFuture, isPast, parseISO } from "date-fns";
 import {
   CheckSquare,
   Plus,
@@ -12,15 +12,16 @@ import {
   CheckCircle2,
   Circle,
   Loader2,
-  ListFilter,
   Inbox,
+  Bell,
+  AlertTriangle,
 } from "lucide-react";
 import { useTasks, useCreateTask, useUpdateTask, useDeleteTask, useToggleTask } from "@/hooks/useTasks";
 import type { Task, TaskInsert } from "@/hooks/useTasks";
 import TaskModal from "@/components/TaskModal";
 import { toast } from "sonner";
 
-type FilterTab = "all" | "today" | "upcoming" | "completed";
+type FilterTab = "all" | "today" | "upcoming" | "overdue" | "completed";
 
 const priorityConfig: Record<string, { label: string; class: string }> = {
   high: { label: "High", class: "bg-destructive/10 text-destructive" },
