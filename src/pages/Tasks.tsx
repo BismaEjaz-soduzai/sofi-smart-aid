@@ -118,10 +118,13 @@ export default function Tasks() {
     }
   };
 
+  const overdueCount = tasks.filter((t) => t.due_date && isPast(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) && !t.completed).length;
+
   const tabs: { key: FilterTab; label: string; count: number }[] = [
     { key: "all", label: "All", count: tasks.length },
     { key: "today", label: "Today", count: tasks.filter((t) => t.due_date && isToday(parseISO(t.due_date))).length },
     { key: "upcoming", label: "Upcoming", count: tasks.filter((t) => t.due_date && isFuture(parseISO(t.due_date)) && !t.completed).length },
+    { key: "overdue", label: "Overdue", count: overdueCount },
     { key: "completed", label: "Completed", count: completedCount },
   ];
 
