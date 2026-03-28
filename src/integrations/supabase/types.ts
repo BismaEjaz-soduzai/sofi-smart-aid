@@ -14,6 +14,74 @@ export type Database = {
   }
   public: {
     Tables: {
+      study_files: {
+        Row: {
+          created_at: string
+          file_name: string
+          file_path: string
+          file_size: number
+          file_type: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          file_path: string
+          file_size?: number
+          file_type: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          file_path?: string
+          file_size?: number
+          file_type?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      study_interactions: {
+        Row: {
+          assistant_response: string
+          created_at: string
+          id: string
+          related_file_id: string | null
+          user_id: string
+          user_prompt: string
+        }
+        Insert: {
+          assistant_response?: string
+          created_at?: string
+          id?: string
+          related_file_id?: string | null
+          user_id: string
+          user_prompt: string
+        }
+        Update: {
+          assistant_response?: string
+          created_at?: string
+          id?: string
+          related_file_id?: string | null
+          user_id?: string
+          user_prompt?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "study_interactions_related_file_id_fkey"
+            columns: ["related_file_id"]
+            isOneToOne: false
+            referencedRelation: "study_files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           category: string
