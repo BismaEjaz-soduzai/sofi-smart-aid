@@ -49,7 +49,7 @@ const App = () => (
               <Route path="/planner" element={<Planner />} />
               <Route path="/study" element={<StudyCompanion />} />
               <Route path="/learning" element={<LearningHub />} />
-              <Route path="/assignments" element={<Assignments />} />
+              
               <Route path="/focus" element={<FocusMode />} />
               <Route path="/assistant" element={<AIAssistant />} />
               <Route path="/settings" element={<SettingsPage />} />

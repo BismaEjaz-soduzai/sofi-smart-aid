@@ -42,7 +42,6 @@ const mainNav = [
 const studyNav = [
   { title: "Study Companion", url: "/study", icon: BookOpen },
   { title: "Learning Hub", url: "/learning", icon: Upload },
-  { title: "Assignments", url: "/assignments", icon: GraduationCap },
 ];
 
 const toolsNav = [
