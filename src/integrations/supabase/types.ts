@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      notes: {
+        Row: {
+          category: string
+          content: string
+          created_at: string
+          id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string
+          content?: string
+          created_at?: string
+          id?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          content?: string
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       study_files: {
         Row: {
           created_at: string
@@ -93,6 +123,7 @@ export type Database = {
           due_time: string | null
           id: string
           priority: string
+          reminder_enabled: boolean
           title: string
           updated_at: string
           user_id: string
@@ -107,6 +138,7 @@ export type Database = {
           due_time?: string | null
           id?: string
           priority?: string
+          reminder_enabled?: boolean
           title: string
           updated_at?: string
           user_id: string
@@ -121,6 +153,7 @@ export type Database = {
           due_time?: string | null
           id?: string
           priority?: string
+          reminder_enabled?: boolean
           title?: string
           updated_at?: string
           user_id?: string

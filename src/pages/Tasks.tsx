@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { format, isToday, isFuture, parseISO } from "date-fns";
+import { format, isToday, isFuture, isPast, parseISO } from "date-fns";
 import {
   CheckSquare,
   Plus,
@@ -12,15 +12,16 @@ import {
   CheckCircle2,
   Circle,
   Loader2,
-  ListFilter,
   Inbox,
+  Bell,
+  AlertTriangle,
 } from "lucide-react";
 import { useTasks, useCreateTask, useUpdateTask, useDeleteTask, useToggleTask } from "@/hooks/useTasks";
 import type { Task, TaskInsert } from "@/hooks/useTasks";
 import TaskModal from "@/components/TaskModal";
 import { toast } from "sonner";
 
-type FilterTab = "all" | "today" | "upcoming" | "completed";
+type FilterTab = "all" | "today" | "upcoming" | "overdue" | "completed";
 
 const priorityConfig: Record<string, { label: string; class: string }> = {
   high: { label: "High", class: "bg-destructive/10 text-destructive" },
@@ -52,16 +53,16 @@ export default function Tasks() {
   const filtered = useMemo(() => {
     let list = tasks;
 
-    // Filter
     if (filter === "today") {
       list = list.filter((t) => t.due_date && isToday(parseISO(t.due_date)));
     } else if (filter === "upcoming") {
       list = list.filter((t) => t.due_date && isFuture(parseISO(t.due_date)) && !t.completed);
+    } else if (filter === "overdue") {
+      list = list.filter((t) => t.due_date && isPast(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) && !t.completed);
     } else if (filter === "completed") {
       list = list.filter((t) => t.completed);
     }
 
-    // Search
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -117,10 +118,13 @@ export default function Tasks() {
     }
   };
 
+  const overdueCount = tasks.filter((t) => t.due_date && isPast(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) && !t.completed).length;
+
   const tabs: { key: FilterTab; label: string; count: number }[] = [
     { key: "all", label: "All", count: tasks.length },
     { key: "today", label: "Today", count: tasks.filter((t) => t.due_date && isToday(parseISO(t.due_date))).length },
     { key: "upcoming", label: "Upcoming", count: tasks.filter((t) => t.due_date && isFuture(parseISO(t.due_date)) && !t.completed).length },
+    { key: "overdue", label: "Overdue", count: overdueCount },
     { key: "completed", label: "Completed", count: completedCount },
   ];
 
@@ -305,6 +309,11 @@ function TaskRow({
           <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${cat.class}`}>
             {cat.label}
           </span>
+          {(task as any).reminder_enabled && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] text-primary">
+              <Bell className="w-3 h-3" />
+            </span>
+          )}
         </div>
       </div>
 
@@ -334,6 +343,7 @@ function EmptyState({ filter, onAdd }: { filter: FilterTab; onAdd: () => void })
     all: { title: "No tasks yet", desc: "Create your first task to get started" },
     today: { title: "Nothing due today", desc: "Enjoy your free time or plan ahead" },
     upcoming: { title: "No upcoming tasks", desc: "All caught up! Add tasks for the future" },
+    overdue: { title: "Nothing overdue", desc: "You're on track — great job!" },
     completed: { title: "No completed tasks", desc: "Start checking off your to-do list" },
   };
   const msg = messages[filter];

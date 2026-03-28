@@ -1,7 +1,6 @@
 import {
   LayoutDashboard,
   CheckSquare,
-  Bell,
   StickyNote,
   Calendar,
   BookOpen,
@@ -33,7 +32,6 @@ import {
 const mainNav = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Tasks", url: "/tasks", icon: CheckSquare },
-  { title: "Reminders", url: "/reminders", icon: Bell },
   { title: "Notes", url: "/notes", icon: StickyNote },
   { title: "Planner", url: "/planner", icon: Calendar },
 ];

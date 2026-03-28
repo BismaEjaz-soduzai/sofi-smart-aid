@@ -14,7 +14,7 @@ import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import Dashboard from "@/pages/Dashboard";
 import Tasks from "@/pages/Tasks";
-import Reminders from "@/pages/Reminders";
+
 import Notes from "@/pages/Notes";
 import Planner from "@/pages/Planner";
 import StudyCompanion from "@/pages/StudyCompanion";
@@ -44,7 +44,7 @@ const App = () => (
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/tasks" element={<Tasks />} />
-              <Route path="/reminders" element={<Reminders />} />
+              
               <Route path="/notes" element={<Notes />} />
               <Route path="/planner" element={<Planner />} />
               <Route path="/study" element={<StudyCompanion />} />
