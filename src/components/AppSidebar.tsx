@@ -7,7 +7,6 @@ import {
   BookOpen,
   Upload,
   Timer,
-  GraduationCap,
   MessageCircle,
   Settings,
   Sparkles,
