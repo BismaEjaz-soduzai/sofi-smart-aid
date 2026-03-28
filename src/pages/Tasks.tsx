@@ -309,6 +309,11 @@ function TaskRow({
           <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${cat.class}`}>
             {cat.label}
           </span>
+          {(task as any).reminder_enabled && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] text-primary">
+              <Bell className="w-3 h-3" />
+            </span>
+          )}
         </div>
       </div>
 

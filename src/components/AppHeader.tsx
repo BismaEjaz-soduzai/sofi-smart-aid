@@ -16,7 +16,7 @@ import {
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/tasks": "Tasks",
-  "/reminders": "Reminders",
+  
   "/notes": "Notes",
   "/planner": "Planner",
   "/study": "Study Companion",

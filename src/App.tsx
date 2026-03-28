@@ -44,7 +44,7 @@ const App = () => (
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/tasks" element={<Tasks />} />
-              <Route path="/reminders" element={<Reminders />} />
+              
               <Route path="/notes" element={<Notes />} />
               <Route path="/planner" element={<Planner />} />
               <Route path="/study" element={<StudyCompanion />} />

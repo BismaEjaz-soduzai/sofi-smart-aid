@@ -1,7 +1,6 @@
 import {
   LayoutDashboard,
   CheckSquare,
-  Bell,
   StickyNote,
   Calendar,
   BookOpen,
