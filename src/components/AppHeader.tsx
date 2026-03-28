@@ -21,7 +21,7 @@ const pageTitles: Record<string, string> = {
   "/planner": "Planner",
   "/study": "Study Companion",
   "/learning": "Learning Hub",
-  "/assignments": "Assignments & Exams",
+  
   "/focus": "Focus Mode",
   "/assistant": "AI Assistant",
   "/settings": "Settings",

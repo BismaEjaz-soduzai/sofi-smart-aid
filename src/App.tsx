@@ -19,7 +19,7 @@ import Notes from "@/pages/Notes";
 import Planner from "@/pages/Planner";
 import StudyCompanion from "@/pages/StudyCompanion";
 import LearningHub from "@/pages/LearningHub";
-import Assignments from "@/pages/Assignments";
+
 import FocusMode from "@/pages/FocusMode";
 import AIAssistant from "@/pages/AIAssistant";
 import SettingsPage from "@/pages/SettingsPage";
@@ -49,7 +49,7 @@ const App = () => (
               <Route path="/planner" element={<Planner />} />
               <Route path="/study" element={<StudyCompanion />} />
               <Route path="/learning" element={<LearningHub />} />
-              <Route path="/assignments" element={<Assignments />} />
+              
               <Route path="/focus" element={<FocusMode />} />
               <Route path="/assistant" element={<AIAssistant />} />
               <Route path="/settings" element={<SettingsPage />} />
