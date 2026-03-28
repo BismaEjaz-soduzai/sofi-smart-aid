@@ -53,16 +53,16 @@ export default function Tasks() {
   const filtered = useMemo(() => {
     let list = tasks;
 
-    // Filter
     if (filter === "today") {
       list = list.filter((t) => t.due_date && isToday(parseISO(t.due_date)));
     } else if (filter === "upcoming") {
       list = list.filter((t) => t.due_date && isFuture(parseISO(t.due_date)) && !t.completed);
+    } else if (filter === "overdue") {
+      list = list.filter((t) => t.due_date && isPast(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) && !t.completed);
     } else if (filter === "completed") {
       list = list.filter((t) => t.completed);
     }
 
-    // Search
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
