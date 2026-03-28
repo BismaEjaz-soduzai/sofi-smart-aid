@@ -338,6 +338,7 @@ function EmptyState({ filter, onAdd }: { filter: FilterTab; onAdd: () => void })
     all: { title: "No tasks yet", desc: "Create your first task to get started" },
     today: { title: "Nothing due today", desc: "Enjoy your free time or plan ahead" },
     upcoming: { title: "No upcoming tasks", desc: "All caught up! Add tasks for the future" },
+    overdue: { title: "Nothing overdue", desc: "You're on track — great job!" },
     completed: { title: "No completed tasks", desc: "Start checking off your to-do list" },
   };
   const msg = messages[filter];
