@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 import {
@@ -10,11 +10,12 @@ import {
   Type,
   AlignLeft,
   Loader2,
+  Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import type { TaskInsert, TaskUpdate, Task } from "@/hooks/useTasks";
+import type { TaskInsert, Task } from "@/hooks/useTasks";
 
 const priorities = [
   { value: "low", label: "Low", color: "bg-muted text-muted-foreground" },
@@ -40,15 +41,27 @@ interface TaskModalProps {
 }
 
 export default function TaskModal({ open, onClose, onSubmit, loading, initial }: TaskModalProps) {
-  const [title, setTitle] = useState(initial?.title || "");
-  const [description, setDescription] = useState(initial?.description || "");
-  const [dueDate, setDueDate] = useState<Date | undefined>(
-    initial?.due_date ? new Date(initial.due_date) : undefined
-  );
-  const [dueTime, setDueTime] = useState(initial?.due_time?.slice(0, 5) || "");
-  const [priority, setPriority] = useState(initial?.priority || "medium");
-  const [category, setCategory] = useState(initial?.category || "personal");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
+  const [dueTime, setDueTime] = useState("");
+  const [priority, setPriority] = useState("medium");
+  const [category, setCategory] = useState("personal");
+  const [reminderEnabled, setReminderEnabled] = useState(false);
   const [titleError, setTitleError] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setTitle(initial?.title || "");
+      setDescription(initial?.description || "");
+      setDueDate(initial?.due_date ? new Date(initial.due_date) : undefined);
+      setDueTime(initial?.due_time?.slice(0, 5) || "");
+      setPriority(initial?.priority || "medium");
+      setCategory(initial?.category || "personal");
+      setReminderEnabled((initial as any)?.reminder_enabled || false);
+      setTitleError("");
+    }
+  }, [open, initial]);
 
   const handleSubmit = () => {
     if (!title.trim()) { setTitleError("Title is required"); return; }
@@ -60,7 +73,8 @@ export default function TaskModal({ open, onClose, onSubmit, loading, initial }:
       due_time: dueTime || null,
       priority,
       category,
-    });
+      reminder_enabled: reminderEnabled,
+    } as any);
   };
 
   if (!open) return null;
@@ -80,9 +94,8 @@ export default function TaskModal({ open, onClose, onSubmit, loading, initial }:
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          className="relative z-10 w-full max-w-lg mx-4 glass-card p-6 space-y-5 max-h-[90vh] overflow-y-auto"
+          className="relative z-10 w-full max-w-lg mx-4 bg-card border border-border rounded-2xl shadow-xl p-6 space-y-5 max-h-[90vh] overflow-y-auto"
         >
-          {/* Header */}
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-foreground">
               {initial ? "Edit Task" : "New Task"}
@@ -123,7 +136,7 @@ export default function TaskModal({ open, onClose, onSubmit, loading, initial }:
             />
           </div>
 
-          {/* Date & Time row */}
+          {/* Date & Time */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
@@ -139,13 +152,7 @@ export default function TaskModal({ open, onClose, onSubmit, loading, initial }:
                   </button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={dueDate}
-                    onSelect={setDueDate}
-                    initialFocus
-                    className={cn("p-3 pointer-events-auto")}
-                  />
+                  <Calendar mode="single" selected={dueDate} onSelect={setDueDate} initialFocus className="p-3 pointer-events-auto" />
                 </PopoverContent>
               </Popover>
             </div>
@@ -160,6 +167,27 @@ export default function TaskModal({ open, onClose, onSubmit, loading, initial }:
                 className="w-full px-3.5 py-2.5 rounded-xl bg-muted/40 border border-border text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/20"
               />
             </div>
+          </div>
+
+          {/* Reminder Toggle */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border">
+            <div className="flex items-center gap-2">
+              <Bell className={`w-4 h-4 ${reminderEnabled ? "text-primary" : "text-muted-foreground"}`} />
+              <div>
+                <p className="text-sm font-medium text-foreground">Reminder</p>
+                <p className="text-[10px] text-muted-foreground">Get notified before due date</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setReminderEnabled(!reminderEnabled)}
+              className={`w-10 h-6 rounded-full transition-colors relative ${
+                reminderEnabled ? "bg-primary" : "bg-muted"
+              }`}
+            >
+              <div className={`w-4 h-4 rounded-full bg-white shadow-sm absolute top-1 transition-transform ${
+                reminderEnabled ? "translate-x-5" : "translate-x-1"
+              }`} />
+            </button>
           </div>
 
           {/* Priority */}
