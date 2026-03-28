@@ -14,7 +14,7 @@ import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import Dashboard from "@/pages/Dashboard";
 import Tasks from "@/pages/Tasks";
-import Reminders from "@/pages/Reminders";
+
 import Notes from "@/pages/Notes";
 import Planner from "@/pages/Planner";
 import StudyCompanion from "@/pages/StudyCompanion";
