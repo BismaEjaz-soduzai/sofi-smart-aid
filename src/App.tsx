@@ -14,14 +14,10 @@ import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import Dashboard from "@/pages/Dashboard";
 import Tasks from "@/pages/Tasks";
-
 import Notes from "@/pages/Notes";
 import Planner from "@/pages/Planner";
-import StudyCompanion from "@/pages/StudyCompanion";
-import LearningHub from "@/pages/LearningHub";
-
-import FocusMode from "@/pages/FocusMode";
-import AIAssistant from "@/pages/AIAssistant";
+import SmartWorkspace from "@/pages/SmartWorkspace";
+import SofiAssistant from "@/pages/SofiAssistant";
 import SettingsPage from "@/pages/SettingsPage";
 import NotFound from "@/pages/NotFound";
 
@@ -44,14 +40,10 @@ const App = () => (
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/tasks" element={<Tasks />} />
-              
               <Route path="/notes" element={<Notes />} />
               <Route path="/planner" element={<Planner />} />
-              <Route path="/study" element={<StudyCompanion />} />
-              <Route path="/learning" element={<LearningHub />} />
-              
-              <Route path="/focus" element={<FocusMode />} />
-              <Route path="/assistant" element={<AIAssistant />} />
+              <Route path="/workspace" element={<SmartWorkspace />} />
+              <Route path="/assistant" element={<SofiAssistant />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />

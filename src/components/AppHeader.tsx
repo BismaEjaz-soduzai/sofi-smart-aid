@@ -16,14 +16,10 @@ import {
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/tasks": "Tasks",
-  
   "/notes": "Notes",
   "/planner": "Planner",
-  "/study": "Study Companion",
-  "/learning": "Learning Hub",
-  
-  "/focus": "Focus Mode",
-  "/assistant": "AI Assistant",
+  "/workspace": "Smart Workspace",
+  "/assistant": "SOFI Assistant",
   "/settings": "Settings",
 };
 
