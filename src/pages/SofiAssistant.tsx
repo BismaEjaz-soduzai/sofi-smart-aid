@@ -3,12 +3,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Send, Sparkles, Loader2, Timer, Play, Pause, RotateCcw,
   Calendar, BookOpen, Lightbulb, PenLine, Languages, Zap,
-  Presentation, GraduationCap, MessageCircle,
+  Presentation, GraduationCap, MessageCircle, Mic, MicOff,
+  Volume2, VolumeX, Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 
-// ─── Types ────────────────────────────────────────────
 interface Message {
   id: string;
   role: "user" | "assistant";
@@ -45,49 +45,85 @@ const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/study-chat`;
 
 export default function SofiAssistant() {
   const [section, setSection] = useState<Section>("chat");
+  const [sharedPrompt, setSharedPrompt] = useState("");
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
-      {/* Section tabs */}
       <div className="flex gap-1 p-2 border-b border-border bg-card/60 backdrop-blur-sm">
         {([
           { key: "chat" as Section, label: "Assistant Chat", icon: MessageCircle },
           { key: "focus" as Section, label: "Focus Zone", icon: Timer },
           { key: "tools" as Section, label: "Quick Tools", icon: Sparkles },
         ]).map((s) => (
-          <button
-            key={s.key}
-            onClick={() => setSection(s.key)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-              section === s.key
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            }`}
-          >
-            <s.icon className="w-3.5 h-3.5" />
-            {s.label}
+          <button key={s.key} onClick={() => setSection(s.key)} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${section === s.key ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}>
+            <s.icon className="w-3.5 h-3.5" /> {s.label}
           </button>
         ))}
       </div>
-
-      {section === "chat" && <ChatSection />}
+      {section === "chat" && <ChatSection initialPrompt={sharedPrompt} onPromptConsumed={() => setSharedPrompt("")} />}
       {section === "focus" && <FocusSection />}
-      {section === "tools" && <ToolsSection onUsePrompt={(p) => { setSection("chat"); }} />}
+      {section === "tools" && <ToolsSection onUsePrompt={(p) => { setSharedPrompt(p); setSection("chat"); }} />}
     </div>
   );
 }
 
-// ─── CHAT SECTION ─────────────────────────────────────
-function ChatSection() {
+// ─── CHAT ──────────────────────────────────────────────
+function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: string; onPromptConsumed: () => void }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (initialPrompt) {
+      sendMessage(initialPrompt);
+      onPromptConsumed();
+    }
+  }, [initialPrompt]);
+
+  // Speech-to-text
+  const toggleListening = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) { toast.error("Speech recognition not supported in this browser"); return; }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.onresult = (e: any) => {
+      const transcript = Array.from(e.results).map((r: any) => r[0].transcript).join("");
+      setInput(transcript);
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => { setIsListening(false); toast.error("Voice recognition failed"); };
+    recognition.start();
+    recognitionRef.current = recognition;
+    setIsListening(true);
+  };
+
+  // Text-to-speech
+  const speakText = (text: string) => {
+    if (isSpeaking) { speechSynthesis.cancel(); setIsSpeaking(false); return; }
+    const clean = text.replace(/[#*`_~\[\]()>]/g, "");
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.rate = 0.95;
+    utterance.onend = () => setIsSpeaking(false);
+    speechSynthesis.speak(utterance);
+    setIsSpeaking(true);
+  };
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || isLoading) return;
@@ -96,35 +132,25 @@ function ChatSection() {
     setMessages(allMessages);
     setInput("");
     setIsLoading(true);
-
     let assistantContent = "";
+
     try {
       const resp = await fetch(CHAT_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
         body: JSON.stringify({ messages: allMessages.map((m) => ({ role: m.role, content: m.content })) }),
       });
-
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err.error || `Error ${resp.status}`);
-      }
+      if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `Error ${resp.status}`); }
       if (!resp.body) throw new Error("No response body");
 
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-
       const upsert = (chunk: string) => {
         assistantContent += chunk;
         setMessages((prev) => {
           const last = prev[prev.length - 1];
-          if (last?.role === "assistant") {
-            return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantContent } : m));
-          }
+          if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantContent } : m));
           return [...prev, { id: crypto.randomUUID(), role: "assistant", content: assistantContent }];
         });
       };
@@ -141,22 +167,14 @@ function ChatSection() {
           if (!line.startsWith("data: ")) continue;
           const json = line.slice(6).trim();
           if (json === "[DONE]") break;
-          try {
-            const parsed = JSON.parse(json);
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) upsert(content);
-          } catch {
-            buffer = line + "\n" + buffer;
-            break;
-          }
+          try { const p = JSON.parse(json); const c = p.choices?.[0]?.delta?.content; if (c) upsert(c); }
+          catch { buffer = line + "\n" + buffer; break; }
         }
       }
     } catch (e: any) {
       toast.error(e.message || "Failed to get response");
       if (!assistantContent) setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
-    } finally {
-      setIsLoading(false);
-    }
+    } finally { setIsLoading(false); }
   };
 
   const isEmpty = messages.length === 0;
@@ -167,11 +185,10 @@ function ChatSection() {
         {isEmpty ? (
           <div className="p-4 lg:p-6 max-w-3xl mx-auto space-y-6">
             <div className="text-center pt-8 pb-2">
-              <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                <Sparkles className="w-6 h-6 text-primary" />
-              </div>
+              <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-3"><Sparkles className="w-6 h-6 text-primary" /></div>
               <h2 className="text-lg font-bold text-foreground">Hey! I'm SOFI</h2>
               <p className="text-sm text-muted-foreground mt-1">Your personal AI assistant for study & productivity</p>
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1 justify-center"><Mic className="w-3 h-3" /> Click the mic to use voice input</p>
             </div>
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5"><Lightbulb className="w-3 h-3" /> Try asking</p>
@@ -187,9 +204,14 @@ function ChatSection() {
             <AnimatePresence initial={false}>
               {messages.map((msg) => (
                 <motion.div key={msg.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm ${msg.role === "user" ? "bg-primary text-primary-foreground rounded-br-md" : "bg-muted text-foreground rounded-bl-md"}`}>
+                  <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm relative group ${msg.role === "user" ? "bg-primary text-primary-foreground rounded-br-md" : "bg-muted text-foreground rounded-bl-md"}`}>
                     {msg.role === "assistant" ? (
-                      <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"><ReactMarkdown>{msg.content}</ReactMarkdown></div>
+                      <>
+                        <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"><ReactMarkdown>{msg.content}</ReactMarkdown></div>
+                        <button onClick={() => speakText(msg.content)} className="absolute -bottom-1 -right-1 opacity-0 group-hover:opacity-100 w-7 h-7 rounded-full bg-card border border-border shadow-sm flex items-center justify-center transition-opacity">
+                          {isSpeaking ? <VolumeX className="w-3 h-3 text-muted-foreground" /> : <Volume2 className="w-3 h-3 text-muted-foreground" />}
+                        </button>
+                      </>
                     ) : msg.content}
                   </div>
                 </motion.div>
@@ -205,12 +227,14 @@ function ChatSection() {
       {/* Input */}
       <div className="p-4 border-t border-border flex-shrink-0">
         <div className="flex items-end gap-2 bg-card border border-border rounded-xl px-4 py-2 max-w-3xl mx-auto">
+          <button onClick={toggleListening} className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${isListening ? "bg-destructive text-destructive-foreground animate-pulse" : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"}`}>
+            {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+          </button>
           <textarea
-            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
-            placeholder="Ask SOFI anything..."
+            placeholder={isListening ? "Listening..." : "Ask SOFI anything..."}
             rows={1}
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none resize-none max-h-32"
             style={{ minHeight: "1.5rem" }}
@@ -224,7 +248,7 @@ function ChatSection() {
   );
 }
 
-// ─── FOCUS SECTION ────────────────────────────────────
+// ─── FOCUS ─────────────────────────────────────────────
 function FocusSection() {
   const [duration, setDuration] = useState(25);
   const [seconds, setSeconds] = useState(25 * 60);
@@ -242,12 +266,7 @@ function FocusSection() {
 
   useEffect(() => { if (seconds === 0) { setRunning(false); toast.success("Focus session complete! 🎉"); } }, [seconds]);
 
-  const handleDurationChange = (d: number) => {
-    if (running) return;
-    setDuration(d);
-    setSeconds(d * 60);
-  };
-
+  const handleDurationChange = (d: number) => { if (running) return; setDuration(d); setSeconds(d * 60); };
   const mins = Math.floor(seconds / 60).toString().padStart(2, "0");
   const secs = (seconds % 60).toString().padStart(2, "0");
   const progress = ((duration * 60 - seconds) / (duration * 60)) * 100;
@@ -260,7 +279,6 @@ function FocusSection() {
           <p className="text-sm text-muted-foreground mt-0.5">Stay focused and productive</p>
         </div>
 
-        {/* Session type */}
         <div className="space-y-2">
           <label className="text-xs font-medium text-muted-foreground">Session Type</label>
           <div className="flex flex-wrap gap-1.5">
@@ -270,20 +288,17 @@ function FocusSection() {
           </div>
         </div>
 
-        {/* Goal */}
         <div className="space-y-2">
           <label className="text-xs font-medium text-muted-foreground">Session Goal (optional)</label>
           <input value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="e.g. Complete chapter 5 revision" className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring" />
         </div>
 
-        {/* Duration pills */}
         <div className="flex justify-center gap-2">
           {DURATIONS.map((d) => (
             <button key={d} onClick={() => handleDurationChange(d)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${duration === d ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>{d} min</button>
           ))}
         </div>
 
-        {/* Timer */}
         <div className="relative w-48 h-48 mx-auto">
           <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
             <circle cx="50" cy="50" r="45" fill="none" className="stroke-muted" strokeWidth="3" />
@@ -294,7 +309,6 @@ function FocusSection() {
           </div>
         </div>
 
-        {/* Controls */}
         <div className="flex items-center justify-center gap-3">
           <button onClick={() => setRunning(!running)} className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:opacity-90 transition-opacity">
             {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
@@ -303,100 +317,31 @@ function FocusSection() {
             <RotateCcw className="w-4 h-4" />
           </button>
         </div>
-
         <p className="text-center text-sm text-muted-foreground">Stay focused. You've got this. 💪</p>
       </div>
     </div>
   );
 }
 
-// ─── QUICK TOOLS SECTION ──────────────────────────────
+// ─── QUICK TOOLS ───────────────────────────────────────
 function ToolsSection({ onUsePrompt }: { onUsePrompt: (prompt: string) => void }) {
-  const [input, setInput] = useState("");
-  const [output, setOutput] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const run = async (prompt?: string) => {
-    const text = prompt || input;
-    if (!text.trim() || loading) return;
-    setLoading(true);
-    setOutput("");
-
-    let content = "";
-    try {
-      const resp = await fetch(CHAT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
-        body: JSON.stringify({ messages: [{ role: "user", content: text }] }),
-      });
-      if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `Error ${resp.status}`); }
-      if (!resp.body) throw new Error("No response body");
-
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (!line.startsWith("data: ")) continue;
-          const json = line.slice(6).trim();
-          if (json === "[DONE]") break;
-          try {
-            const parsed = JSON.parse(json);
-            const c = parsed.choices?.[0]?.delta?.content;
-            if (c) { content += c; setOutput(content); }
-          } catch { buffer = line + "\n" + buffer; break; }
-        }
-      }
-    } catch (e: any) {
-      toast.error(e.message || "Failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="flex-1 overflow-auto p-4 lg:p-6 max-w-3xl mx-auto space-y-5">
       <div className="text-center">
         <h2 className="text-lg font-bold text-foreground">Quick Assistant Tools</h2>
         <p className="text-sm text-muted-foreground mt-0.5">One-click smart actions</p>
       </div>
-
-      {/* Tool grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {QUICK_TOOLS.map((tool) => (
-          <button key={tool.label} onClick={() => { setInput(tool.prompt); }} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-card border border-border hover:border-primary/30 hover:bg-primary/5 transition-all text-center group">
-            <div className="w-8 h-8 rounded-lg bg-muted group-hover:bg-primary/10 flex items-center justify-center transition-colors">
-              <tool.icon className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+          <button key={tool.label} onClick={() => onUsePrompt(tool.prompt)} className="flex flex-col items-center gap-2 p-4 rounded-xl bg-card border border-border hover:border-primary/30 hover:bg-primary/5 transition-all text-center group">
+            <div className="w-10 h-10 rounded-xl bg-muted group-hover:bg-primary/10 flex items-center justify-center transition-colors">
+              <tool.icon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
             </div>
-            <span className="text-[11px] font-medium text-foreground">{tool.label}</span>
+            <span className="text-xs font-medium text-foreground">{tool.label}</span>
           </button>
         ))}
       </div>
-
-      {/* Input */}
-      <div className="flex items-end gap-2 bg-card border border-border rounded-xl px-4 py-3">
-        <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); run(); } }} placeholder="Type or select a tool above..." rows={2} className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none resize-none" />
-        <button onClick={() => run()} disabled={!input.trim() || loading} className="w-9 h-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40 hover:opacity-90 transition-opacity flex-shrink-0">
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-        </button>
-      </div>
-
-      {/* Output */}
-      {output && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="bg-card border border-border rounded-xl p-4">
-          <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-            <ReactMarkdown>{output}</ReactMarkdown>
-          </div>
-        </motion.div>
-      )}
+      <p className="text-center text-xs text-muted-foreground">Click a tool to start a conversation with SOFI</p>
     </div>
   );
 }
