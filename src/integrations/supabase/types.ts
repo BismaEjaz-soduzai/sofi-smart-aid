@@ -44,6 +44,107 @@ export type Database = {
         }
         Relationships: []
       }
+      plan_sessions: {
+        Row: {
+          created_at: string
+          date: string | null
+          end_time: string | null
+          id: string
+          is_completed: boolean
+          note: string | null
+          plan_id: string
+          start_time: string | null
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          date?: string | null
+          end_time?: string | null
+          id?: string
+          is_completed?: boolean
+          note?: string | null
+          plan_id: string
+          start_time?: string | null
+          title: string
+        }
+        Update: {
+          created_at?: string
+          date?: string | null
+          end_time?: string | null
+          id?: string
+          is_completed?: boolean
+          note?: string | null
+          plan_id?: string
+          start_time?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_sessions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plans: {
+        Row: {
+          category: string
+          color_tag: string | null
+          created_at: string
+          description: string | null
+          duration: string | null
+          emoji: string | null
+          end_date: string | null
+          goal: string | null
+          id: string
+          progress: number | null
+          source_type: string
+          start_date: string | null
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string
+          color_tag?: string | null
+          created_at?: string
+          description?: string | null
+          duration?: string | null
+          emoji?: string | null
+          end_date?: string | null
+          goal?: string | null
+          id?: string
+          progress?: number | null
+          source_type?: string
+          start_date?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          color_tag?: string | null
+          created_at?: string
+          description?: string | null
+          duration?: string | null
+          emoji?: string | null
+          end_date?: string | null
+          goal?: string | null
+          id?: string
+          progress?: number | null
+          source_type?: string
+          start_date?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       study_files: {
         Row: {
           created_at: string
