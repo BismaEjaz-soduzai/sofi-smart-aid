@@ -2,16 +2,9 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState, useRef, useEffect } from "react";
-import {
-  Menu,
-  Search,
-  Bell,
-  ChevronDown,
-  User,
-  LogOut,
-  Settings,
-  X,
-} from "lucide-react";
+import { Menu, ChevronDown, User, LogOut, Settings } from "lucide-react";
+import { GlobalSearch } from "@/components/GlobalSearch";
+import { NotificationCenter } from "@/components/NotificationCenter";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -27,14 +20,11 @@ export function AppHeader() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
   const pageTitle = pageTitles[location.pathname] || "SOFI";
 
-  // Close profile dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
@@ -61,7 +51,6 @@ export function AppHeader() {
 
   return (
     <header className="h-14 flex items-center justify-between border-b border-border px-4 lg:px-6 bg-card/60 backdrop-blur-xl sticky top-0 z-20">
-      {/* Left: trigger + title */}
       <div className="flex items-center gap-3 min-w-0">
         <SidebarTrigger className="text-muted-foreground hover:text-foreground transition-colors lg:hidden">
           <Menu className="w-4 h-4" />
@@ -71,46 +60,9 @@ export function AppHeader() {
         </h2>
       </div>
 
-      {/* Right: search, notifications, profile */}
       <div className="flex items-center gap-1.5">
-        {/* Search */}
-        {searchOpen ? (
-          <div className="flex items-center gap-2 bg-muted/60 rounded-lg px-3 py-1.5 animate-fade-in">
-            <Search className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-            <input
-              autoFocus
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search..."
-              className="bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 outline-none w-40 lg:w-56"
-            />
-            <button
-              onClick={() => { setSearchOpen(false); setSearchQuery(""); }}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setSearchOpen(true)}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-            title="Search"
-          >
-            <Search className="w-4 h-4" />
-          </button>
-        )}
-
-        {/* Notifications */}
-        <button
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors relative"
-          title="Notifications"
-        >
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-destructive rounded-full" />
-        </button>
-
-        {/* Divider */}
+        <GlobalSearch />
+        <NotificationCenter />
         <div className="w-px h-5 bg-border mx-1" />
 
         {/* Profile dropdown */}
@@ -148,23 +100,13 @@ export function AppHeader() {
 }
 
 function DropdownItem({
-  icon: Icon,
-  label,
-  onClick,
-  destructive,
-}: {
-  icon: any;
-  label: string;
-  onClick: () => void;
-  destructive?: boolean;
-}) {
+  icon: Icon, label, onClick, destructive,
+}: { icon: any; label: string; onClick: () => void; destructive?: boolean }) {
   return (
     <button
       onClick={onClick}
       className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${
-        destructive
-          ? "text-destructive hover:bg-destructive/5"
-          : "text-foreground hover:bg-muted/50"
+        destructive ? "text-destructive hover:bg-destructive/5" : "text-foreground hover:bg-muted/50"
       }`}
     >
       <Icon className="w-3.5 h-3.5" />
