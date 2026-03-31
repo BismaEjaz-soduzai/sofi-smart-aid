@@ -275,16 +275,8 @@ export default function SettingsPage() {
                     <option value="24h">24-hour</option>
                   </select>
                 </SettingRow>
-                <SettingRow label="Language" description="Interface language">
-                  <select
-                    value={prefs.language}
-                    onChange={(e) => updatePref("language", e.target.value)}
-                    className="text-xs bg-muted rounded-lg px-2.5 py-1.5 border border-border text-foreground"
-                  >
-                    <option value="en">English</option>
-                    <option value="ur">Urdu</option>
-                    <option value="ar">Arabic</option>
-                  </select>
+                <SettingRow label="Language" description="Only English is supported currently">
+                  <span className="text-xs bg-muted rounded-lg px-2.5 py-1.5 border border-border text-muted-foreground">English</span>
                 </SettingRow>
                 <SettingRow label="Show Completed Tasks" description="Display completed tasks in task list">
                   <Switch checked={prefs.showCompletedTasks} onCheckedChange={(v) => updatePref("showCompletedTasks", v)} />
