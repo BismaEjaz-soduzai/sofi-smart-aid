@@ -157,6 +157,21 @@ export function useToggleSession() {
         .update({ is_completed } as any)
         .eq("id", id);
       if (error) throw error;
+
+      // Auto-sync plan progress
+      const { data: sessions } = await supabase
+        .from("plan_sessions")
+        .select("is_completed")
+        .eq("plan_id", plan_id);
+      if (sessions && sessions.length > 0) {
+        const completed = sessions.filter((s: any) => s.is_completed).length;
+        const progress = Math.round((completed / sessions.length) * 100);
+        const status = progress === 100 ? "completed" : "active";
+        await supabase
+          .from("plans")
+          .update({ progress, status } as any)
+          .eq("id", plan_id);
+      }
       return { plan_id };
     },
     onSuccess: (data) => {

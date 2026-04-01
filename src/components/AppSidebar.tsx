@@ -5,6 +5,8 @@ import {
   Calendar,
   BookOpen,
   Sparkles,
+  MessageSquare,
+  User,
   ChevronLeft,
   LogOut,
   Settings,
@@ -36,6 +38,11 @@ const mainNav = [
 const workspaceNav = [
   { title: "Smart Workspace", url: "/workspace", icon: BookOpen },
   { title: "SOFI Assistant", url: "/assistant", icon: Sparkles },
+  { title: "Study Chat", url: "/chat", icon: MessageSquare },
+];
+
+const accountNav = [
+  { title: "Profile", url: "/profile", icon: User },
 ];
 
 export function AppSidebar() {
@@ -75,6 +82,7 @@ export function AppSidebar() {
       <SidebarContent className="px-2 mt-1">
         <NavGroup label="Main" items={mainNav} collapsed={collapsed} isActive={isActive} />
         <NavGroup label="AI & Study" items={workspaceNav} collapsed={collapsed} isActive={isActive} />
+        <NavGroup label="Account" items={accountNav} collapsed={collapsed} isActive={isActive} />
       </SidebarContent>
 
       <SidebarFooter className="p-2 space-y-0.5">
