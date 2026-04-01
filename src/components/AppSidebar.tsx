@@ -5,6 +5,8 @@ import {
   Calendar,
   BookOpen,
   Sparkles,
+  MessageSquare,
+  User,
   ChevronLeft,
   LogOut,
   Settings,
