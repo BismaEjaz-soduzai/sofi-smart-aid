@@ -19,6 +19,8 @@ import Planner from "@/pages/Planner";
 import SmartWorkspace from "@/pages/SmartWorkspace";
 import SofiAssistant from "@/pages/SofiAssistant";
 import SettingsPage from "@/pages/SettingsPage";
+import ProfilePage from "@/pages/ProfilePage";
+import ChatRooms from "@/pages/ChatRooms";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
