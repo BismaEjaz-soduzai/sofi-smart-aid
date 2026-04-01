@@ -82,6 +82,7 @@ export function AppSidebar() {
       <SidebarContent className="px-2 mt-1">
         <NavGroup label="Main" items={mainNav} collapsed={collapsed} isActive={isActive} />
         <NavGroup label="AI & Study" items={workspaceNav} collapsed={collapsed} isActive={isActive} />
+        <NavGroup label="Account" items={accountNav} collapsed={collapsed} isActive={isActive} />
       </SidebarContent>
 
       <SidebarFooter className="p-2 space-y-0.5">

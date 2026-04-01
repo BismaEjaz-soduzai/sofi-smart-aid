@@ -47,6 +47,8 @@ const App = () => (
               <Route path="/workspace" element={<SmartWorkspace />} />
               <Route path="/assistant" element={<SofiAssistant />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/chat" element={<ChatRooms />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
