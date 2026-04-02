@@ -55,6 +55,7 @@ export type Database = {
           file_url: string | null
           id: string
           message_type: string
+          read_by: string[]
           room_id: string
           user_id: string
         }
@@ -66,6 +67,7 @@ export type Database = {
           file_url?: string | null
           id?: string
           message_type?: string
+          read_by?: string[]
           room_id: string
           user_id: string
         }
@@ -77,6 +79,7 @@ export type Database = {
           file_url?: string | null
           id?: string
           message_type?: string
+          read_by?: string[]
           room_id?: string
           user_id?: string
         }
