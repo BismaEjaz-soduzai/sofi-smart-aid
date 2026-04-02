@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare, Plus, Users, Send, Paperclip, Copy, LogOut,
-  X, Hash, Loader2, FileText, Image, Download, ChevronLeft
+  Hash, Loader2, FileText, Download, ChevronLeft,
+  Phone, Video, Monitor, Check, CheckCheck
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -10,6 +11,10 @@ import {
   useJoinRoom, useSendMessage, useUploadChatFile, useLeaveRoom,
   type ChatRoom, type ChatMessage
 } from "@/hooks/useChat";
+import { useTypingIndicator } from "@/hooks/useTypingIndicator";
+import { useReadReceipts } from "@/hooks/useReadReceipts";
+import { useWebRTC } from "@/hooks/useWebRTC";
+import VideoCallOverlay from "@/components/chat/VideoCallOverlay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -61,7 +66,6 @@ export default function ChatRooms() {
             </Button>
           </div>
 
-          {/* Create modal */}
           {showCreate && (
             <div className="glass-card p-3 mb-3 space-y-2">
               <Input value={newRoomName} onChange={(e) => setNewRoomName(e.target.value)} placeholder="Room name..." className="h-8 text-sm" onKeyDown={(e) => e.key === "Enter" && handleCreate()} />
@@ -142,6 +146,10 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   const { data: members = [] } = useChatMembers(room.id);
   const sendMessage = useSendMessage();
   const uploadFile = useUploadChatFile();
+  const { typingUsers, sendTyping, stopTyping } = useTypingIndicator(room.id);
+  const { markAsRead } = useReadReceipts();
+  const webrtc = useWebRTC(room.id);
+  
   const [text, setText] = useState("");
   const [showMembers, setShowMembers] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -151,10 +159,20 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Mark messages as read when they appear
+  useEffect(() => {
+    if (!userId || messages.length === 0) return;
+    const unread = messages
+      .filter((m) => m.user_id !== userId && !(m as any).read_by?.includes(userId))
+      .map((m) => m.id);
+    if (unread.length > 0) markAsRead(unread);
+  }, [messages, userId, markAsRead]);
+
   const handleSend = async () => {
     if (!text.trim()) return;
     const msg = text;
     setText("");
+    stopTyping();
     await sendMessage.mutateAsync({ roomId: room.id, content: msg });
   };
 
@@ -175,97 +193,139 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   };
 
   const memberMap = new Map(members.map((m) => [m.user_id, m.display_name || "User"]));
+  const typingNames = typingUsers.map((id) => memberMap.get(id) || "Someone").filter(Boolean);
 
   const copyInvite = () => {
     navigator.clipboard.writeText(room.invite_code);
     toast.success("Invite code copied!");
   };
 
+  const handleStartCall = (video: boolean) => {
+    const memberIds = members.map((m) => m.user_id);
+    webrtc.startCall(memberIds, video);
+  };
+
   return (
-    <div className="flex-1 flex flex-col glass-card overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="md:hidden text-muted-foreground hover:text-foreground">
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-            <MessageSquare className="w-4 h-4 text-primary" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-foreground">{room.name}</p>
-            <p className="text-[10px] text-muted-foreground">{members.length} members</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={copyInvite} className="h-8 w-8" title="Copy invite code">
-            <Copy className="w-3.5 h-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => setShowMembers(!showMembers)} className="h-8 w-8">
-            <Users className="w-3.5 h-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={onLeave} className="h-8 w-8 text-destructive hover:text-destructive">
-            <LogOut className="w-3.5 h-3.5" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Members panel */}
-      <AnimatePresence>
-        {showMembers && (
-          <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} className="overflow-hidden border-b border-border">
-            <div className="p-3 flex flex-wrap gap-2">
-              {members.map((m) => (
-                <div key={m.id} className="flex items-center gap-2 bg-muted/50 rounded-full px-3 py-1.5">
-                  <Avatar className="w-5 h-5">
-                    <AvatarFallback className="text-[8px] bg-primary/10 text-primary">
-                      {(m.display_name || "U")[0].toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="text-xs text-foreground">{m.display_name || "User"}</span>
-                  {m.user_id === room.created_by && <span className="text-[8px] text-primary font-medium">Owner</span>}
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Messages */}
-      <ScrollArea className="flex-1 p-4">
-        <div className="space-y-3">
-          {messages.map((msg) => (
-            <MessageBubble key={msg.id} msg={msg} isOwn={msg.user_id === userId} senderName={memberMap.get(msg.user_id) || "User"} />
-          ))}
-          <div ref={scrollRef} />
-        </div>
-      </ScrollArea>
-
-      {/* Input */}
-      <div className="p-3 border-t border-border flex gap-2">
-        <input ref={fileRef} type="file" className="hidden" onChange={handleFileUpload} accept=".pdf,.docx,.doc,.pptx,.txt,.png,.jpg,.jpeg,.gif,.xlsx,.csv" />
-        <Button variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0" onClick={() => fileRef.current?.click()} disabled={uploadFile.isPending}>
-          {uploadFile.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
-        </Button>
-        <Input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-          placeholder="Type a message..."
-          className="h-9 text-sm"
+    <>
+      {webrtc.callState !== "idle" && (
+        <VideoCallOverlay
+          localStream={webrtc.localStream}
+          screenStream={webrtc.screenStream}
+          remoteStreams={webrtc.remoteStreams}
+          isAudioEnabled={webrtc.isAudioEnabled}
+          isVideoEnabled={webrtc.isVideoEnabled}
+          isScreenSharing={webrtc.isScreenSharing}
+          memberNames={memberMap}
+          onToggleAudio={webrtc.toggleAudio}
+          onToggleVideo={webrtc.toggleVideo}
+          onStartScreenShare={webrtc.startScreenShare}
+          onStopScreenShare={webrtc.stopScreenShare}
+          onEndCall={webrtc.endCall}
         />
-        <Button size="icon" className="h-9 w-9 flex-shrink-0" onClick={handleSend} disabled={!text.trim() || sendMessage.isPending}>
-          <Send className="w-4 h-4" />
-        </Button>
+      )}
+
+      <div className="flex-1 flex flex-col glass-card overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="md:hidden text-muted-foreground hover:text-foreground">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <MessageSquare className="w-4 h-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">{room.name}</p>
+              <p className="text-[10px] text-muted-foreground">{members.length} members</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" onClick={() => handleStartCall(false)} className="h-8 w-8" title="Voice call">
+              <Phone className="w-3.5 h-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => handleStartCall(true)} className="h-8 w-8" title="Video call">
+              <Video className="w-3.5 h-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={copyInvite} className="h-8 w-8" title="Copy invite code">
+              <Copy className="w-3.5 h-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => setShowMembers(!showMembers)} className="h-8 w-8">
+              <Users className="w-3.5 h-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={onLeave} className="h-8 w-8 text-destructive hover:text-destructive">
+              <LogOut className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Members panel */}
+        <AnimatePresence>
+          {showMembers && (
+            <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} className="overflow-hidden border-b border-border">
+              <div className="p-3 flex flex-wrap gap-2">
+                {members.map((m) => (
+                  <div key={m.id} className="flex items-center gap-2 bg-muted/50 rounded-full px-3 py-1.5">
+                    <Avatar className="w-5 h-5">
+                      <AvatarFallback className="text-[8px] bg-primary/10 text-primary">
+                        {(m.display_name || "U")[0].toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-xs text-foreground">{m.display_name || "User"}</span>
+                    {m.user_id === room.created_by && <span className="text-[8px] text-primary font-medium">Owner</span>}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Messages */}
+        <ScrollArea className="flex-1 p-4">
+          <div className="space-y-3">
+            {messages.map((msg) => (
+              <MessageBubble key={msg.id} msg={msg} isOwn={msg.user_id === userId} senderName={memberMap.get(msg.user_id) || "User"} userId={userId} />
+            ))}
+            <div ref={scrollRef} />
+          </div>
+        </ScrollArea>
+
+        {/* Typing indicator */}
+        {typingNames.length > 0 && (
+          <div className="px-4 pb-1">
+            <p className="text-[11px] text-muted-foreground animate-pulse">
+              {typingNames.join(", ")} {typingNames.length === 1 ? "is" : "are"} typing...
+            </p>
+          </div>
+        )}
+
+        {/* Input */}
+        <div className="p-3 border-t border-border flex gap-2">
+          <input ref={fileRef} type="file" className="hidden" onChange={handleFileUpload} accept=".pdf,.docx,.doc,.pptx,.txt,.png,.jpg,.jpeg,.gif,.xlsx,.csv" />
+          <Button variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0" onClick={() => fileRef.current?.click()} disabled={uploadFile.isPending}>
+            {uploadFile.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+          </Button>
+          <Input
+            value={text}
+            onChange={(e) => { setText(e.target.value); sendTyping(); }}
+            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+            placeholder="Type a message..."
+            className="h-9 text-sm"
+          />
+          <Button size="icon" className="h-9 w-9 flex-shrink-0" onClick={handleSend} disabled={!text.trim() || sendMessage.isPending}>
+            <Send className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
-function MessageBubble({ msg, isOwn, senderName }: { msg: ChatMessage; isOwn: boolean; senderName: string }) {
+function MessageBubble({ msg, isOwn, senderName, userId }: { msg: ChatMessage; isOwn: boolean; senderName: string; userId: string }) {
   const isFile = msg.message_type === "file" && msg.file_url;
   const ext = msg.file_name?.split(".").pop()?.toLowerCase() || "";
   const isImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(ext);
+  const readBy = (msg as any).read_by as string[] | undefined;
+  const isRead = isOwn && readBy && readBy.length > 0;
 
   return (
     <div className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
@@ -288,9 +348,16 @@ function MessageBubble({ msg, isOwn, senderName }: { msg: ChatMessage; isOwn: bo
             <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
           )}
         </div>
-        <p className={`text-[9px] text-muted-foreground mt-0.5 ${isOwn ? "text-right mr-1" : "ml-1"}`}>
-          {format(new Date(msg.created_at), "h:mm a")}
-        </p>
+        <div className={`flex items-center gap-1 mt-0.5 ${isOwn ? "justify-end mr-1" : "ml-1"}`}>
+          <p className="text-[9px] text-muted-foreground">
+            {format(new Date(msg.created_at), "h:mm a")}
+          </p>
+          {isOwn && (
+            isRead
+              ? <CheckCheck className="w-3 h-3 text-primary" />
+              : <Check className="w-3 h-3 text-muted-foreground" />
+          )}
+        </div>
       </div>
     </div>
   );
