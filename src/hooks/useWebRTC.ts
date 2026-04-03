@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 type CallState = "idle" | "calling" | "ringing" | "connected";
 
-const ICE_SERVERS = [
+const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
 ];
@@ -21,6 +21,26 @@ export function useWebRTC(roomId?: string) {
 
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const iceServersRef = useRef<RTCIceServer[]>(FALLBACK_ICE_SERVERS);
+
+  // Fetch TURN credentials on mount
+  useEffect(() => {
+    const fetchIceServers = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
+        const { data, error } = await supabase.functions.invoke("turn-credentials");
+        if (!error && data?.iceServers) {
+          iceServersRef.current = data.iceServers;
+          console.log("ICE servers loaded (STUN+TURN):", data.iceServers.length, "servers");
+        }
+      } catch (err) {
+        console.warn("Using fallback STUN servers:", err);
+      }
+    };
+    fetchIceServers();
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -34,7 +54,7 @@ export function useWebRTC(roomId?: string) {
     if (!roomId || !user) return;
 
     const channel = supabase.channel(`webrtc-${roomId}`);
-    
+
     channel
       .on("broadcast", { event: "webrtc-signal" }, async ({ payload }) => {
         if (payload.to !== user.id) return;
@@ -66,7 +86,7 @@ export function useWebRTC(roomId?: string) {
   }, [roomId, user]);
 
   const createPeerConnection = useCallback((peerId: string) => {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -94,7 +114,6 @@ export function useWebRTC(roomId?: string) {
       }
     };
 
-    // Add local tracks
     if (localStream) {
       localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
     }
@@ -160,7 +179,6 @@ export function useWebRTC(roomId?: string) {
       setIsVideoEnabled(videoEnabled);
       setCallState("calling");
 
-      // Send call invite to all members and create offers
       for (const memberId of memberIds) {
         if (memberId === user?.id) continue;
 
@@ -170,7 +188,7 @@ export function useWebRTC(roomId?: string) {
           payload: { from: user!.id, to: memberId, type: "call-invite", data: null },
         });
 
-        const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+        const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
 
         pc.onicecandidate = (event) => {
           if (event.candidate) {
@@ -214,7 +232,6 @@ export function useWebRTC(roomId?: string) {
   }, [user]);
 
   const endCall = useCallback(() => {
-    // Notify peers
     peerConnections.current.forEach((_, peerId) => {
       channelRef.current?.send({
         type: "broadcast",
@@ -223,11 +240,9 @@ export function useWebRTC(roomId?: string) {
       });
     });
 
-    // Close all connections
     peerConnections.current.forEach((pc) => pc.close());
     peerConnections.current.clear();
 
-    // Stop local streams
     localStream?.getTracks().forEach((t) => t.stop());
     screenStream?.getTracks().forEach((t) => t.stop());
 
@@ -259,8 +274,7 @@ export function useWebRTC(roomId?: string) {
       setIsScreenSharing(true);
 
       const screenTrack = stream.getVideoTracks()[0];
-      
-      // Replace video track in all peer connections
+
       peerConnections.current.forEach((pc) => {
         const sender = pc.getSenders().find((s) => s.track?.kind === "video");
         if (sender) sender.replaceTrack(screenTrack);
@@ -279,7 +293,6 @@ export function useWebRTC(roomId?: string) {
     setScreenStream(null);
     setIsScreenSharing(false);
 
-    // Restore camera track
     if (localStream) {
       const videoTrack = localStream.getVideoTracks()[0];
       if (videoTrack) {
