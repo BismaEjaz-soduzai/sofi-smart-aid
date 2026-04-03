@@ -69,7 +69,7 @@ export function useWebRTC(roomId?: string) {
   }, [roomId, user]);
 
   const createPeerConnection = useCallback((peerId: string) => {
-    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -171,7 +171,7 @@ export function useWebRTC(roomId?: string) {
           payload: { from: user!.id, to: memberId, type: "call-invite", data: null },
         });
 
-        const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
+        const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
         pc.onicecandidate = (event) => {
           if (event.candidate) {
