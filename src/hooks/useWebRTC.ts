@@ -24,26 +24,6 @@ export function useWebRTC(roomId?: string) {
 
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const iceServersRef = useRef<RTCIceServer[]>(FALLBACK_ICE_SERVERS);
-
-  // Fetch TURN credentials on mount
-  useEffect(() => {
-    const fetchIceServers = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-
-        const { data, error } = await supabase.functions.invoke("turn-credentials");
-        if (!error && data?.iceServers) {
-          iceServersRef.current = data.iceServers;
-          console.log("ICE servers loaded (STUN+TURN):", data.iceServers.length, "servers");
-        }
-      } catch (err) {
-        console.warn("Using fallback STUN servers:", err);
-      }
-    };
-    fetchIceServers();
-  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
