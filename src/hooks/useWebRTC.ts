@@ -4,9 +4,12 @@ import { useAuth } from "@/contexts/AuthContext";
 
 type CallState = "idle" | "calling" | "ringing" | "connected";
 
-const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
+const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
+  { urls: "stun:stun3.l.google.com:19302" },
+  { urls: "stun:stun4.l.google.com:19302" },
 ];
 
 export function useWebRTC(roomId?: string) {
@@ -21,26 +24,6 @@ export function useWebRTC(roomId?: string) {
 
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const iceServersRef = useRef<RTCIceServer[]>(FALLBACK_ICE_SERVERS);
-
-  // Fetch TURN credentials on mount
-  useEffect(() => {
-    const fetchIceServers = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-
-        const { data, error } = await supabase.functions.invoke("turn-credentials");
-        if (!error && data?.iceServers) {
-          iceServersRef.current = data.iceServers;
-          console.log("ICE servers loaded (STUN+TURN):", data.iceServers.length, "servers");
-        }
-      } catch (err) {
-        console.warn("Using fallback STUN servers:", err);
-      }
-    };
-    fetchIceServers();
-  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -86,7 +69,7 @@ export function useWebRTC(roomId?: string) {
   }, [roomId, user]);
 
   const createPeerConnection = useCallback((peerId: string) => {
-    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -188,7 +171,7 @@ export function useWebRTC(roomId?: string) {
           payload: { from: user!.id, to: memberId, type: "call-invite", data: null },
         });
 
-        const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
+        const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
         pc.onicecandidate = (event) => {
           if (event.candidate) {
