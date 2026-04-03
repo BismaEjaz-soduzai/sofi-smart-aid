@@ -4,9 +4,12 @@ import { useAuth } from "@/contexts/AuthContext";
 
 type CallState = "idle" | "calling" | "ringing" | "connected";
 
-const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
+const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
+  { urls: "stun:stun3.l.google.com:19302" },
+  { urls: "stun:stun4.l.google.com:19302" },
 ];
 
 export function useWebRTC(roomId?: string) {
