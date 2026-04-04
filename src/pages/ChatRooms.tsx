@@ -243,6 +243,8 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   const { typingUsers, sendTyping, stopTyping } = useTypingIndicator(room.id);
   const { markAsRead } = useReadReceipts();
   const webrtc = useWebRTC(room.id);
+  const editMessage = useEditMessage();
+  const deleteMessage = useDeleteMessage();
   const { isOnline } = usePresence(room.id);
   const { getReactionsForMessage, toggleReaction } = useReactions(room.id);
 
