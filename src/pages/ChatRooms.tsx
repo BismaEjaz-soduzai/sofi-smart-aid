@@ -402,8 +402,11 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
                 isOwn={msg.user_id === userId}
                 senderName={memberMap.get(msg.user_id) || "User"}
                 userId={userId}
+                roomId={room.id}
                 reactions={getReactionsForMessage(msg.id)}
                 onReact={(emoji) => toggleReaction({ messageId: msg.id, emoji })}
+                onEdit={(content) => editMessage.mutate({ messageId: msg.id, content, roomId: room.id })}
+                onDelete={() => deleteMessage.mutate({ messageId: msg.id, roomId: room.id })}
               />
             ))}
             <div ref={scrollRef} />
