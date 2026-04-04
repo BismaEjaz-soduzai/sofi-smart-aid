@@ -441,84 +441,145 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
 
 /* ─── Message Bubble ─── */
 
-function MessageBubble({ msg, isOwn, senderName, userId, reactions, onReact }: {
-  msg: ChatMessage; isOwn: boolean; senderName: string; userId: string;
+function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onReact, onEdit, onDelete }: {
+  msg: ChatMessage; isOwn: boolean; senderName: string; userId: string; roomId: string;
   reactions: Map<string, { count: number; users: string[]; hasReacted: boolean }>;
   onReact: (emoji: string) => void;
+  onEdit: (content: string) => void;
+  onDelete: () => void;
 }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(msg.content);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
   const isFile = msg.message_type === "file" && msg.file_url;
   const ext = msg.file_name?.split(".").pop()?.toLowerCase() || "";
   const isImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(ext);
   const readBy = (msg as any).read_by as string[] | undefined;
   const isRead = isOwn && readBy && readBy.length > 0;
+  const isEdited = !!(msg as any).edited_at;
+
+  const handleSaveEdit = () => {
+    if (!editText.trim() || editText === msg.content) { setIsEditing(false); return; }
+    onEdit(editText.trim());
+    setIsEditing(false);
+  };
 
   return (
-    <div className={`flex ${isOwn ? "justify-end" : "justify-start"} group`}>
-      <div className={`max-w-[75%] ${isOwn ? "order-2" : ""}`}>
-        {!isOwn && <p className="text-[10px] text-muted-foreground mb-0.5 ml-1 font-medium">{senderName}</p>}
-        <div className="relative">
-          <div className={`rounded-2xl px-3.5 py-2 ${isOwn ? "bg-primary text-primary-foreground rounded-br-md" : "bg-muted text-foreground rounded-bl-md"}`}>
-            {isFile ? (
-              <div className="space-y-1.5">
-                {isImage ? (
-                  <img src={msg.file_url!} alt={msg.file_name || "image"} className="rounded-lg max-w-[240px] max-h-[200px] object-cover" />
-                ) : (
-                  <a href={msg.file_url!} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 text-xs ${isOwn ? "text-primary-foreground/90 hover:text-primary-foreground" : "text-foreground/80 hover:text-foreground"} transition-colors`}>
-                    <FileText className="w-4 h-4 flex-shrink-0" />
-                    <span className="truncate">{msg.file_name}</span>
-                    <Download className="w-3.5 h-3.5 flex-shrink-0" />
-                  </a>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-            )}
-          </div>
+    <>
+      <div className={`flex ${isOwn ? "justify-end" : "justify-start"} group`}>
+        <div className={`max-w-[75%] ${isOwn ? "order-2" : ""}`}>
+          {!isOwn && <p className="text-[10px] text-muted-foreground mb-0.5 ml-1 font-medium">{senderName}</p>}
+          <div className="relative">
+            <div className={`rounded-2xl px-3.5 py-2 ${isOwn ? "bg-primary text-primary-foreground rounded-br-md" : "bg-muted text-foreground rounded-bl-md"}`}>
+              {isEditing ? (
+                <div className="space-y-2">
+                  <Input
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleSaveEdit(); if (e.key === "Escape") setIsEditing(false); }}
+                    className="h-7 text-sm bg-background/20 border-background/30"
+                    autoFocus
+                  />
+                  <div className="flex gap-1.5">
+                    <Button size="sm" variant="secondary" onClick={handleSaveEdit} className="h-6 text-[10px] px-2">Save</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setIsEditing(false); setEditText(msg.content); }} className="h-6 text-[10px] px-2"><X className="w-3 h-3" /></Button>
+                  </div>
+                </div>
+              ) : isFile ? (
+                <div className="space-y-1.5">
+                  {isImage ? (
+                    <img src={msg.file_url!} alt={msg.file_name || "image"} className="rounded-lg max-w-[240px] max-h-[200px] object-cover" />
+                  ) : (
+                    <a href={msg.file_url!} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 text-xs ${isOwn ? "text-primary-foreground/90 hover:text-primary-foreground" : "text-foreground/80 hover:text-foreground"} transition-colors`}>
+                      <FileText className="w-4 h-4 flex-shrink-0" />
+                      <span className="truncate">{msg.file_name}</span>
+                      <Download className="w-3.5 h-3.5 flex-shrink-0" />
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+              )}
+            </div>
 
-          {/* Emoji reaction button (appears on hover) */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <button className={`absolute ${isOwn ? "-left-8" : "-right-8"} top-1 opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center`}>
-                <Smile className="w-3.5 h-3.5 text-muted-foreground" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-2" side="top">
-              <div className="flex gap-1">
-                {EMOJI_LIST.map((emoji) => (
-                  <button key={emoji} onClick={() => onReact(emoji)} className="hover:bg-muted rounded-md p-1.5 text-base transition-colors hover:scale-110">
-                    {emoji}
+            {/* Action buttons (appear on hover) */}
+            <div className={`absolute ${isOwn ? "-left-16" : "-right-16"} top-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5`}>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="w-6 h-6 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center">
+                    <Smile className="w-3.5 h-3.5 text-muted-foreground" />
                   </button>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-2" side="top">
+                  <div className="flex gap-1">
+                    {EMOJI_LIST.map((emoji) => (
+                      <button key={emoji} onClick={() => onReact(emoji)} className="hover:bg-muted rounded-md p-1.5 text-base transition-colors hover:scale-110">{emoji}</button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
 
-        {/* Reactions display */}
-        {reactions.size > 0 && (
-          <div className={`flex flex-wrap gap-1 mt-1 ${isOwn ? "justify-end mr-1" : "ml-1"}`}>
-            {Array.from(reactions.entries()).map(([emoji, data]) => (
-              <button
-                key={emoji}
-                onClick={() => onReact(emoji)}
-                className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs border transition-colors ${
-                  data.hasReacted
-                    ? "bg-primary/10 border-primary/30 text-primary"
-                    : "bg-muted/50 border-border hover:bg-muted"
-                }`}
-              >
-                <span>{emoji}</span>
-                <span className="text-[10px] font-medium">{data.count}</span>
-              </button>
-            ))}
+              {isOwn && !isFile && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="w-6 h-6 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center">
+                      <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align={isOwn ? "end" : "start"} className="w-32">
+                    <DropdownMenuItem onClick={() => { setEditText(msg.content); setIsEditing(true); }} className="text-xs gap-2">
+                      <Pencil className="w-3.5 h-3.5" /> Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setShowDeleteDialog(true)} className="text-xs gap-2 text-destructive focus:text-destructive">
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+
+              {isOwn && isFile && (
+                <button onClick={() => setShowDeleteDialog(true)} className="w-6 h-6 rounded-full bg-muted/80 hover:bg-destructive/20 flex items-center justify-center">
+                  <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+                </button>
+              )}
+            </div>
           </div>
-        )}
 
-        <div className={`flex items-center gap-1 mt-0.5 ${isOwn ? "justify-end mr-1" : "ml-1"}`}>
-          <p className="text-[9px] text-muted-foreground">{format(new Date(msg.created_at), "h:mm a")}</p>
-          {isOwn && (isRead ? <CheckCheck className="w-3 h-3 text-primary" /> : <Check className="w-3 h-3 text-muted-foreground" />)}
+          {/* Reactions display */}
+          {reactions.size > 0 && (
+            <div className={`flex flex-wrap gap-1 mt-1 ${isOwn ? "justify-end mr-1" : "ml-1"}`}>
+              {Array.from(reactions.entries()).map(([emoji, data]) => (
+                <button key={emoji} onClick={() => onReact(emoji)}
+                  className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs border transition-colors ${data.hasReacted ? "bg-primary/10 border-primary/30 text-primary" : "bg-muted/50 border-border hover:bg-muted"}`}>
+                  <span>{emoji}</span>
+                  <span className="text-[10px] font-medium">{data.count}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className={`flex items-center gap-1 mt-0.5 ${isOwn ? "justify-end mr-1" : "ml-1"}`}>
+            <p className="text-[9px] text-muted-foreground">{format(new Date(msg.created_at), "h:mm a")}</p>
+            {isEdited && <p className="text-[9px] text-muted-foreground/60">(edited)</p>}
+            {isOwn && (isRead ? <CheckCheck className="w-3 h-3 text-primary" /> : <Check className="w-3 h-3 text-muted-foreground" />)}
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete message?</AlertDialogTitle>
+            <AlertDialogDescription>This action cannot be undone. The message will be permanently removed for everyone in the room.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={onDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
