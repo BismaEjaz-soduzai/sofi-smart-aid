@@ -4,7 +4,7 @@ import {
   MessageSquare, Plus, Users, Send, Paperclip, Copy, LogOut,
   Hash, Loader2, FileText, Download, ChevronLeft,
   Phone, Video, Check, CheckCheck, UserPlus, Shield,
-  Smile, BookOpen, Share2, Mic, MonitorUp
+  Smile, BookOpen, Share2, Mic, MonitorUp, Pencil, Trash2, MoreVertical, X
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
