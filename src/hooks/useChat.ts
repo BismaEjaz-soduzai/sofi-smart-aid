@@ -199,6 +199,44 @@ export function useUploadChatFile() {
   });
 }
 
+export function useEditMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ messageId, content, roomId }: { messageId: string; content: string; roomId: string }) => {
+      const { error } = await supabase
+        .from("chat_messages")
+        .update({ content, edited_at: new Date().toISOString() } as any)
+        .eq("id", messageId);
+      if (error) throw error;
+      return roomId;
+    },
+    onSuccess: (roomId) => {
+      qc.invalidateQueries({ queryKey: ["chat-messages", roomId] });
+      toast.success("Message edited");
+    },
+    onError: () => toast.error("Failed to edit message"),
+  });
+}
+
+export function useDeleteMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ messageId, roomId }: { messageId: string; roomId: string }) => {
+      const { error } = await supabase
+        .from("chat_messages")
+        .delete()
+        .eq("id", messageId);
+      if (error) throw error;
+      return roomId;
+    },
+    onSuccess: (roomId) => {
+      qc.invalidateQueries({ queryKey: ["chat-messages", roomId] });
+      toast.success("Message deleted");
+    },
+    onError: () => toast.error("Failed to delete message"),
+  });
+}
+
 export function useLeaveRoom() {
   const qc = useQueryClient();
   const { user } = useAuth();
