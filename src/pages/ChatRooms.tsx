@@ -524,12 +524,15 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
 
 /* ─── Message Bubble ─── */
 
-function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onReact, onEdit, onDelete }: {
+function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onReact, onEdit, onDelete, onReply, repliedMessage, repliedSenderName }: {
   msg: ChatMessage; isOwn: boolean; senderName: string; userId: string; roomId: string;
   reactions: Map<string, { count: number; users: string[]; hasReacted: boolean }>;
   onReact: (emoji: string) => void;
   onEdit: (content: string) => void;
   onDelete: () => void;
+  onReply: () => void;
+  repliedMessage?: ChatMessage;
+  repliedSenderName?: string;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(msg.content);
@@ -538,9 +541,8 @@ function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onRe
   const isFile = msg.message_type === "file" && msg.file_url;
   const ext = msg.file_name?.split(".").pop()?.toLowerCase() || "";
   const isImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(ext);
-  const readBy = (msg as any).read_by as string[] | undefined;
-  const isRead = isOwn && readBy && readBy.length > 0;
-  const isEdited = !!(msg as any).edited_at;
+  const isRead = isOwn && msg.read_by && msg.read_by.length > 0;
+  const isEdited = !!msg.edited_at;
 
   const handleSaveEdit = () => {
     if (!editText.trim() || editText === msg.content) { setIsEditing(false); return; }
