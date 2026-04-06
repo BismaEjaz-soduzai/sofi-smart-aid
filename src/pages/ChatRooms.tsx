@@ -295,8 +295,12 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
 
   const [text, setText] = useState("");
   const [showMembers, setShowMembers] = useState(false);
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const messageMap = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
