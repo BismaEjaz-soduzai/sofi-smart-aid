@@ -606,7 +606,10 @@ function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onRe
             </div>
 
             {/* Action buttons (appear on hover) */}
-            <div className={`absolute ${isOwn ? "-left-16" : "-right-16"} top-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5`}>
+            <div className={`absolute ${isOwn ? "-left-20" : "-right-20"} top-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5`}>
+              <button onClick={onReply} className={`w-6 h-6 rounded-full hover:bg-muted flex items-center justify-center ${bubbleActionTone}`} title="Reply">
+                <Reply className="w-3.5 h-3.5 text-muted-foreground" />
+              </button>
               <Popover>
                 <PopoverTrigger asChild>
                   <button className={`w-6 h-6 rounded-full hover:bg-muted flex items-center justify-center ${bubbleActionTone}`}>
