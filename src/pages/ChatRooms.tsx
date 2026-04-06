@@ -565,7 +565,15 @@ function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onRe
           {!isOwn && <p className="text-[10px] text-muted-foreground mb-0.5 ml-1 font-medium">{senderName}</p>}
           <div className="relative">
             <div className={`rounded-2xl px-3.5 py-2 ${bubbleTone}`}>
-              {isEditing ? (
+              {/* Quoted reply */}
+              {repliedMessage && (
+                <div className={`mb-1.5 rounded-lg px-2.5 py-1.5 border-l-2 ${isOwn ? "bg-background/15 border-primary-foreground/40" : "bg-background/40 border-primary/60"}`}>
+                  <p className={`text-[10px] font-semibold ${isOwn ? "text-primary-foreground/80" : "text-primary"}`}>{repliedSenderName}</p>
+                  <p className={`text-[11px] truncate ${isOwn ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                    {repliedMessage.message_type === "file" ? `📎 ${repliedMessage.file_name}` : repliedMessage.content}
+                  </p>
+                </div>
+              )}
                 <div className="space-y-2">
                   <Input
                     value={editText}
