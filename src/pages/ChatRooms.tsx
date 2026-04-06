@@ -317,9 +317,16 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   const handleSend = async () => {
     if (!text.trim()) return;
     const msg = text;
+    const replyId = replyTo?.id;
     setText("");
+    setReplyTo(null);
     stopTyping();
-    await sendMessage.mutateAsync({ roomId: room.id, content: msg });
+    await sendMessage.mutateAsync({ roomId: room.id, content: msg, replyToId: replyId });
+  };
+
+  const handleReply = (msg: ChatMessage) => {
+    setReplyTo(msg);
+    inputRef.current?.focus();
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
