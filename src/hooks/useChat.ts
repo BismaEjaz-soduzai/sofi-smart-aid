@@ -30,7 +30,10 @@ export interface ChatMessage {
   file_name: string | null;
   file_url: string | null;
   file_size: number | null;
+  reply_to_id: string | null;
   created_at: string;
+  edited_at: string | null;
+  read_by: string[];
 }
 
 export function useChatRooms() {
@@ -146,8 +149,8 @@ export function useJoinRoom() {
 export function useSendMessage() {
   const { user } = useAuth();
   return useMutation({
-    mutationFn: async ({ roomId, content, messageType = "text", fileName, fileUrl, fileSize }: {
-      roomId: string; content: string; messageType?: string; fileName?: string; fileUrl?: string; fileSize?: number;
+    mutationFn: async ({ roomId, content, messageType = "text", fileName, fileUrl, fileSize, replyToId }: {
+      roomId: string; content: string; messageType?: string; fileName?: string; fileUrl?: string; fileSize?: number; replyToId?: string;
     }) => {
       if (!user) throw new Error("Not authenticated");
       const { error } = await supabase.from("chat_messages").insert({
@@ -158,6 +161,7 @@ export function useSendMessage() {
         file_name: fileName || null,
         file_url: fileUrl || null,
         file_size: fileSize || null,
+        reply_to_id: replyToId || null,
       } as any);
       if (error) throw error;
     },
