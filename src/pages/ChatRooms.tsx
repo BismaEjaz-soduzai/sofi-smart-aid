@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare, Plus, Users, Send, Paperclip, Copy, LogOut,
   Hash, Loader2, FileText, Download, ChevronLeft,
   Phone, Video, Check, CheckCheck, UserPlus, Shield,
-  Smile, BookOpen, Share2, Mic, MonitorUp, Pencil, Trash2, MoreVertical, X
+  Smile, BookOpen, Share2, Mic, MonitorUp, Pencil, Trash2, MoreVertical, X,
+  Reply, CornerDownRight
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -21,6 +22,7 @@ import { useReactions } from "@/hooks/useReactions";
 import VideoCallOverlay from "@/components/chat/VideoCallOverlay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
@@ -28,7 +30,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import PageShell from "@/components/PageShell";
 
 const EMOJI_LIST = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "💯"];
@@ -50,6 +52,21 @@ export default function ChatRooms() {
   const [showJoin, setShowJoin] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+
+  // Fetch messages for all rooms to get last message & unread counts
+  const roomMessageQueries = rooms.map((r) => useChatMessages(r.id));
+  const roomPreviews = useMemo(() => {
+    const map = new Map<string, { lastMessage: ChatMessage | null; unreadCount: number }>();
+    rooms.forEach((room, i) => {
+      const msgs = roomMessageQueries[i]?.data || [];
+      const lastMessage = msgs.length > 0 ? msgs[msgs.length - 1] : null;
+      const unreadCount = user ? msgs.filter(
+        (m) => m.user_id !== user.id && !(m.read_by || []).includes(user.id)
+      ).length : 0;
+      map.set(room.id, { lastMessage, unreadCount });
+    });
+    return map;
+  }, [rooms, roomMessageQueries, user]);
 
   const handleCreate = async () => {
     if (!newRoomName.trim()) return;
@@ -142,18 +159,41 @@ export default function ChatRooms() {
                     <p className="text-xs text-muted-foreground">Loading rooms...</p>
                   </div>
                 )}
-                {rooms.map((room) => (
-                  <button key={room.id} onClick={() => setSelectedRoom(room)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all ${selectedRoom?.id === room.id ? "bg-primary/10 border border-primary/20 shadow-sm" : "hover:bg-muted/50 border border-transparent"}`}>
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <MessageSquare className="w-4.5 h-4.5 text-primary" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-foreground truncate">{room.name}</p>
-                      <p className="text-[11px] text-muted-foreground">Created {format(new Date(room.created_at), "MMM d, yyyy")}</p>
-                    </div>
-                  </button>
-                ))}
+                {rooms.map((room) => {
+                  const preview = roomPreviews.get(room.id);
+                  const lastMsg = preview?.lastMessage;
+                  const unread = preview?.unreadCount || 0;
+                  return (
+                    <button key={room.id} onClick={() => setSelectedRoom(room)}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all ${selectedRoom?.id === room.id ? "bg-primary/10 border border-primary/20 shadow-sm" : "hover:bg-muted/50 border border-transparent"}`}>
+                      <div className="relative w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <MessageSquare className="w-4.5 h-4.5 text-primary" />
+                        {unread > 0 && (
+                          <Badge className="absolute -top-1.5 -right-1.5 h-5 min-w-[20px] px-1 text-[10px] flex items-center justify-center bg-destructive text-destructive-foreground border-2 border-background">
+                            {unread > 99 ? "99+" : unread}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`text-sm truncate ${unread > 0 ? "font-bold text-foreground" : "font-medium text-foreground"}`}>{room.name}</p>
+                          {lastMsg && (
+                            <span className="text-[10px] text-muted-foreground flex-shrink-0">
+                              {formatDistanceToNow(new Date(lastMsg.created_at), { addSuffix: false })}
+                            </span>
+                          )}
+                        </div>
+                        <p className={`text-[11px] truncate mt-0.5 ${unread > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                          {lastMsg
+                            ? lastMsg.message_type === "file"
+                              ? `📎 ${lastMsg.file_name || "File"}`
+                              : lastMsg.content
+                            : "No messages yet"}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
                 {rooms.length === 0 && !isLoading && (
                   <EmptyRoomsState onCreateClick={() => setShowCreate(true)} onJoinClick={() => setShowJoin(true)} />
                 )}
@@ -255,8 +295,12 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
 
   const [text, setText] = useState("");
   const [showMembers, setShowMembers] = useState(false);
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const messageMap = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -273,9 +317,16 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   const handleSend = async () => {
     if (!text.trim()) return;
     const msg = text;
+    const replyId = replyTo?.id;
     setText("");
+    setReplyTo(null);
     stopTyping();
-    await sendMessage.mutateAsync({ roomId: room.id, content: msg });
+    await sendMessage.mutateAsync({ roomId: room.id, content: msg, replyToId: replyId });
+  };
+
+  const handleReply = (msg: ChatMessage) => {
+    setReplyTo(msg);
+    inputRef.current?.focus();
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -400,20 +451,27 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
               </motion.div>
             )}
 
-            {messages.map((msg) => (
-              <MessageBubble
-                key={msg.id}
-                msg={msg}
-                isOwn={msg.user_id === userId}
-                senderName={memberMap.get(msg.user_id) || "User"}
-                userId={userId}
-                roomId={room.id}
-                reactions={getReactionsForMessage(msg.id)}
-                onReact={(emoji) => toggleReaction({ messageId: msg.id, emoji })}
-                onEdit={(content) => editMessage.mutate({ messageId: msg.id, content, roomId: room.id })}
-                onDelete={() => deleteMessage.mutate({ messageId: msg.id, roomId: room.id })}
-              />
-            ))}
+            {messages.map((msg) => {
+              const repliedMsg = msg.reply_to_id ? messageMap.get(msg.reply_to_id) : null;
+              const repliedSender = repliedMsg ? (memberMap.get(repliedMsg.user_id) || "User") : null;
+              return (
+                <MessageBubble
+                  key={msg.id}
+                  msg={msg}
+                  isOwn={msg.user_id === userId}
+                  senderName={memberMap.get(msg.user_id) || "User"}
+                  userId={userId}
+                  roomId={room.id}
+                  reactions={getReactionsForMessage(msg.id)}
+                  onReact={(emoji) => toggleReaction({ messageId: msg.id, emoji })}
+                  onEdit={(content) => editMessage.mutate({ messageId: msg.id, content, roomId: room.id })}
+                  onDelete={() => deleteMessage.mutate({ messageId: msg.id, roomId: room.id })}
+                  onReply={() => handleReply(msg)}
+                  repliedMessage={repliedMsg || undefined}
+                  repliedSenderName={repliedSender || undefined}
+                />
+              );
+            })}
             <div ref={scrollRef} />
           </div>
         </ScrollArea>
@@ -427,6 +485,26 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
           </div>
         )}
 
+        {/* Reply preview */}
+        {replyTo && (
+          <div className="px-3 pt-2 border-t border-border">
+            <div className="flex items-center gap-2 bg-muted/60 rounded-lg px-3 py-2">
+              <CornerDownRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-medium text-primary">
+                  Replying to {memberMap.get(replyTo.user_id) || "User"}
+                </p>
+                <p className="text-[11px] text-muted-foreground truncate">
+                  {replyTo.message_type === "file" ? `📎 ${replyTo.file_name}` : replyTo.content}
+                </p>
+              </div>
+              <button onClick={() => setReplyTo(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Input bar */}
         <div className="p-3 border-t border-border">
           <div className="flex items-center gap-2">
@@ -434,7 +512,7 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
             <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0" onClick={() => fileRef.current?.click()} disabled={uploadFile.isPending}>
               {uploadFile.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
             </Button></TooltipTrigger><TooltipContent>Attach file (max 20MB)</TooltipContent></Tooltip>
-            <Input value={text} onChange={(e) => { setText(e.target.value); sendTyping(); }} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()} placeholder="Type a message..." className="h-9 text-sm flex-1" />
+            <Input ref={inputRef} value={text} onChange={(e) => { setText(e.target.value); sendTyping(); }} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()} placeholder={replyTo ? "Type your reply..." : "Type a message..."} className="h-9 text-sm flex-1" />
             <Button size="icon" className="h-9 w-9 flex-shrink-0" onClick={handleSend} disabled={!text.trim() || sendMessage.isPending}><Send className="w-4 h-4" /></Button>
           </div>
           <p className="text-[10px] text-muted-foreground/60 mt-1.5 ml-11">Press Enter to send • Attach PDFs, images & documents</p>
@@ -446,12 +524,15 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
 
 /* ─── Message Bubble ─── */
 
-function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onReact, onEdit, onDelete }: {
+function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onReact, onEdit, onDelete, onReply, repliedMessage, repliedSenderName }: {
   msg: ChatMessage; isOwn: boolean; senderName: string; userId: string; roomId: string;
   reactions: Map<string, { count: number; users: string[]; hasReacted: boolean }>;
   onReact: (emoji: string) => void;
   onEdit: (content: string) => void;
   onDelete: () => void;
+  onReply: () => void;
+  repliedMessage?: ChatMessage;
+  repliedSenderName?: string;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(msg.content);
@@ -460,9 +541,8 @@ function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onRe
   const isFile = msg.message_type === "file" && msg.file_url;
   const ext = msg.file_name?.split(".").pop()?.toLowerCase() || "";
   const isImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(ext);
-  const readBy = (msg as any).read_by as string[] | undefined;
-  const isRead = isOwn && readBy && readBy.length > 0;
-  const isEdited = !!(msg as any).edited_at;
+  const isRead = isOwn && msg.read_by && msg.read_by.length > 0;
+  const isEdited = !!msg.edited_at;
 
   const handleSaveEdit = () => {
     if (!editText.trim() || editText === msg.content) { setIsEditing(false); return; }
@@ -485,6 +565,15 @@ function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onRe
           {!isOwn && <p className="text-[10px] text-muted-foreground mb-0.5 ml-1 font-medium">{senderName}</p>}
           <div className="relative">
             <div className={`rounded-2xl px-3.5 py-2 ${bubbleTone}`}>
+              {/* Quoted reply */}
+              {repliedMessage && (
+                <div className={`mb-1.5 rounded-lg px-2.5 py-1.5 border-l-2 ${isOwn ? "bg-background/15 border-primary-foreground/40" : "bg-background/40 border-primary/60"}`}>
+                  <p className={`text-[10px] font-semibold ${isOwn ? "text-primary-foreground/80" : "text-primary"}`}>{repliedSenderName}</p>
+                  <p className={`text-[11px] truncate ${isOwn ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                    {repliedMessage.message_type === "file" ? `📎 ${repliedMessage.file_name}` : repliedMessage.content}
+                  </p>
+                </div>
+              )}
               {isEditing ? (
                 <div className="space-y-2">
                   <Input
@@ -517,7 +606,10 @@ function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onRe
             </div>
 
             {/* Action buttons (appear on hover) */}
-            <div className={`absolute ${isOwn ? "-left-16" : "-right-16"} top-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5`}>
+            <div className={`absolute ${isOwn ? "-left-20" : "-right-20"} top-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5`}>
+              <button onClick={onReply} className={`w-6 h-6 rounded-full hover:bg-muted flex items-center justify-center ${bubbleActionTone}`} title="Reply">
+                <Reply className="w-3.5 h-3.5 text-muted-foreground" />
+              </button>
               <Popover>
                 <PopoverTrigger asChild>
                   <button className={`w-6 h-6 rounded-full hover:bg-muted flex items-center justify-center ${bubbleActionTone}`}>
