@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare, Plus, Users, Send, Paperclip, Copy, LogOut,
   Hash, Loader2, FileText, Download, ChevronLeft,
   Phone, Video, Check, CheckCheck, UserPlus, Shield,
-  Smile, BookOpen, Share2, Mic, MonitorUp, Pencil, Trash2, MoreVertical, X
+  Smile, BookOpen, Share2, Mic, MonitorUp, Pencil, Trash2, MoreVertical, X,
+  Reply, CornerDownRight
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -21,6 +22,7 @@ import { useReactions } from "@/hooks/useReactions";
 import VideoCallOverlay from "@/components/chat/VideoCallOverlay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
@@ -28,7 +30,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import PageShell from "@/components/PageShell";
 
 const EMOJI_LIST = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "💯"];
