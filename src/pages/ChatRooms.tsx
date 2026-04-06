@@ -451,20 +451,27 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
               </motion.div>
             )}
 
-            {messages.map((msg) => (
-              <MessageBubble
-                key={msg.id}
-                msg={msg}
-                isOwn={msg.user_id === userId}
-                senderName={memberMap.get(msg.user_id) || "User"}
-                userId={userId}
-                roomId={room.id}
-                reactions={getReactionsForMessage(msg.id)}
-                onReact={(emoji) => toggleReaction({ messageId: msg.id, emoji })}
-                onEdit={(content) => editMessage.mutate({ messageId: msg.id, content, roomId: room.id })}
-                onDelete={() => deleteMessage.mutate({ messageId: msg.id, roomId: room.id })}
-              />
-            ))}
+            {messages.map((msg) => {
+              const repliedMsg = msg.reply_to_id ? messageMap.get(msg.reply_to_id) : null;
+              const repliedSender = repliedMsg ? (memberMap.get(repliedMsg.user_id) || "User") : null;
+              return (
+                <MessageBubble
+                  key={msg.id}
+                  msg={msg}
+                  isOwn={msg.user_id === userId}
+                  senderName={memberMap.get(msg.user_id) || "User"}
+                  userId={userId}
+                  roomId={room.id}
+                  reactions={getReactionsForMessage(msg.id)}
+                  onReact={(emoji) => toggleReaction({ messageId: msg.id, emoji })}
+                  onEdit={(content) => editMessage.mutate({ messageId: msg.id, content, roomId: room.id })}
+                  onDelete={() => deleteMessage.mutate({ messageId: msg.id, roomId: room.id })}
+                  onReply={() => handleReply(msg)}
+                  repliedMessage={repliedMsg || undefined}
+                  repliedSenderName={repliedSender || undefined}
+                />
+              );
+            })}
             <div ref={scrollRef} />
           </div>
         </ScrollArea>
@@ -478,6 +485,26 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
           </div>
         )}
 
+        {/* Reply preview */}
+        {replyTo && (
+          <div className="px-3 pt-2 border-t border-border">
+            <div className="flex items-center gap-2 bg-muted/60 rounded-lg px-3 py-2">
+              <CornerDownRight className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-medium text-primary">
+                  Replying to {memberMap.get(replyTo.user_id) || "User"}
+                </p>
+                <p className="text-[11px] text-muted-foreground truncate">
+                  {replyTo.message_type === "file" ? `📎 ${replyTo.file_name}` : replyTo.content}
+                </p>
+              </div>
+              <button onClick={() => setReplyTo(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Input bar */}
         <div className="p-3 border-t border-border">
           <div className="flex items-center gap-2">
@@ -485,7 +512,7 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
             <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0" onClick={() => fileRef.current?.click()} disabled={uploadFile.isPending}>
               {uploadFile.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
             </Button></TooltipTrigger><TooltipContent>Attach file (max 20MB)</TooltipContent></Tooltip>
-            <Input value={text} onChange={(e) => { setText(e.target.value); sendTyping(); }} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()} placeholder="Type a message..." className="h-9 text-sm flex-1" />
+            <Input ref={inputRef} value={text} onChange={(e) => { setText(e.target.value); sendTyping(); }} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()} placeholder={replyTo ? "Type your reply..." : "Type a message..."} className="h-9 text-sm flex-1" />
             <Button size="icon" className="h-9 w-9 flex-shrink-0" onClick={handleSend} disabled={!text.trim() || sendMessage.isPending}><Send className="w-4 h-4" /></Button>
           </div>
           <p className="text-[10px] text-muted-foreground/60 mt-1.5 ml-11">Press Enter to send • Attach PDFs, images & documents</p>
