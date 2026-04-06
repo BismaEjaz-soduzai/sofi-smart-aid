@@ -574,6 +574,7 @@ function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onRe
                   </p>
                 </div>
               )}
+              {isEditing ? (
                 <div className="space-y-2">
                   <Input
                     value={editText}
