@@ -74,6 +74,12 @@ export function useChatMessages(roomId?: string) {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages", filter: `room_id=eq.${roomId}` }, () => {
         qc.invalidateQueries({ queryKey: ["chat-messages", roomId] });
       })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "chat_messages", filter: `room_id=eq.${roomId}` }, () => {
+        qc.invalidateQueries({ queryKey: ["chat-messages", roomId] });
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "chat_messages", filter: `room_id=eq.${roomId}` }, () => {
+        qc.invalidateQueries({ queryKey: ["chat-messages", roomId] });
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [roomId, qc]);
@@ -99,25 +105,19 @@ export function useCreateRoom() {
   return useMutation({
     mutationFn: async (name: string) => {
       if (!user) throw new Error("Not authenticated");
-      const { data, error } = await supabase
-        .from("chat_rooms")
-        .insert({ name, created_by: user.id } as any)
-        .select()
-        .single();
+      const displayName = user.user_metadata?.full_name || user.email?.split("@")[0] || "User";
+      const { data, error } = await supabase.rpc("create_chat_room" as never, {
+        _name: name,
+        _display_name: displayName,
+      } as never);
       if (error) throw error;
-      // Auto-join creator
-      await supabase.from("chat_members").insert({
-        room_id: (data as ChatRoom).id,
-        user_id: user.id,
-        display_name: user.user_metadata?.full_name || user.email?.split("@")[0] || "User",
-      } as any);
       return data as ChatRoom;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["chat-rooms"] });
       toast.success("Room created!");
     },
-    onError: () => toast.error("Failed to create room"),
+    onError: (err: Error) => toast.error(err.message || "Failed to create room"),
   });
 }
 
@@ -127,32 +127,13 @@ export function useJoinRoom() {
   return useMutation({
     mutationFn: async (inviteCode: string) => {
       if (!user) throw new Error("Not authenticated");
-      // Find room by invite code
-      const { data: rooms, error: findErr } = await supabase
-        .from("chat_rooms")
-        .select("*")
-        .eq("invite_code", inviteCode);
-      if (findErr) throw findErr;
-      if (!rooms || rooms.length === 0) throw new Error("Room not found");
-      const room = rooms[0] as ChatRoom;
-
-      // Check member count
-      const { count } = await supabase
-        .from("chat_members")
-        .select("*", { count: "exact", head: true })
-        .eq("room_id", room.id);
-      if ((count || 0) >= room.max_members) throw new Error("Room is full");
-
-      const { error } = await supabase.from("chat_members").insert({
-        room_id: room.id,
-        user_id: user.id,
-        display_name: user.user_metadata?.full_name || user.email?.split("@")[0] || "User",
-      } as any);
-      if (error) {
-        if (error.code === "23505") throw new Error("Already a member");
-        throw error;
-      }
-      return room;
+      const displayName = user.user_metadata?.full_name || user.email?.split("@")[0] || "User";
+      const { data, error } = await supabase.rpc("join_chat_room_by_invite" as never, {
+        _invite_code: inviteCode.trim(),
+        _display_name: displayName,
+      } as never);
+      if (error) throw error;
+      return data as ChatRoom;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["chat-rooms"] });

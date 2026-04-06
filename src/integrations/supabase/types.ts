@@ -440,6 +440,42 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_chat_room: {
+        Args: { _display_name?: string; _name: string }
+        Returns: {
+          created_at: string
+          created_by: string
+          id: string
+          invite_code: string | null
+          max_members: number
+          name: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "chat_rooms"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      join_chat_room_by_invite: {
+        Args: { _display_name?: string; _invite_code: string }
+        Returns: {
+          created_at: string
+          created_by: string
+          id: string
+          invite_code: string | null
+          max_members: number
+          name: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "chat_rooms"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       mark_message_read: {
         Args: { _message_id: string; _user_id: string }
         Returns: undefined
