@@ -33,6 +33,11 @@ import PageShell from "@/components/PageShell";
 
 const EMOJI_LIST = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "💯"];
 
+const statusDotClasses = {
+  online: "bg-success",
+  offline: "bg-muted-foreground/30",
+} as const;
+
 export default function ChatRooms() {
   const { user } = useAuth();
   const { data: rooms = [], isLoading } = useChatRooms();
@@ -229,7 +234,7 @@ function QuickFeatureCard({ icon: Icon, title, desc }: { icon: React.ComponentTy
 function OnlineStatusDot({ isOnline, size = "sm" }: { isOnline: boolean; size?: "sm" | "md" }) {
   const sizeClass = size === "md" ? "w-3 h-3" : "w-2.5 h-2.5";
   return (
-    <span className={`${sizeClass} rounded-full border-2 border-background ${isOnline ? "bg-green-500" : "bg-muted-foreground/30"}`} />
+    <span className={`${sizeClass} rounded-full border-2 border-background ${isOnline ? statusDotClasses.online : statusDotClasses.offline}`} />
   );
 }
 
@@ -336,7 +341,7 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
             <div>
               <p className="text-sm font-semibold text-foreground">{room.name}</p>
               <p className="text-[11px] text-muted-foreground">
-                {members.length} member{members.length !== 1 ? "s" : ""} • <span className="text-green-500">{onlineCount} online</span>
+                 {members.length} member{members.length !== 1 ? "s" : ""} • <span className="text-success">{onlineCount} online</span>
               </p>
             </div>
           </div>
@@ -366,7 +371,7 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
                         <Avatar className="w-5 h-5">
                           <AvatarFallback className="text-[8px] bg-primary/10 text-primary">{(m.display_name || "U")[0].toUpperCase()}</AvatarFallback>
                         </Avatar>
-                        <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-background ${isOnline(m.user_id) ? "bg-green-500" : "bg-muted-foreground/30"}`} />
+                        <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-background ${isOnline(m.user_id) ? statusDotClasses.online : statusDotClasses.offline}`} />
                       </div>
                       <span className="text-xs text-foreground">{m.display_name || "User"}</span>
                       {m.user_id === room.created_by && <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">Owner</span>}
@@ -465,13 +470,21 @@ function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onRe
     setIsEditing(false);
   };
 
+  const bubbleTone = isOwn
+    ? "bg-primary text-primary-foreground rounded-br-md"
+    : "bg-muted text-foreground rounded-bl-md";
+
+  const bubbleActionTone = isOwn
+    ? "bg-background/90 border border-border/70 shadow-sm"
+    : "bg-card/90 border border-border/70 shadow-sm";
+
   return (
     <>
       <div className={`flex ${isOwn ? "justify-end" : "justify-start"} group`}>
         <div className={`max-w-[75%] ${isOwn ? "order-2" : ""}`}>
           {!isOwn && <p className="text-[10px] text-muted-foreground mb-0.5 ml-1 font-medium">{senderName}</p>}
           <div className="relative">
-            <div className={`rounded-2xl px-3.5 py-2 ${isOwn ? "bg-primary text-primary-foreground rounded-br-md" : "bg-muted text-foreground rounded-bl-md"}`}>
+            <div className={`rounded-2xl px-3.5 py-2 ${bubbleTone}`}>
               {isEditing ? (
                 <div className="space-y-2">
                   <Input
@@ -507,7 +520,7 @@ function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onRe
             <div className={`absolute ${isOwn ? "-left-16" : "-right-16"} top-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5`}>
               <Popover>
                 <PopoverTrigger asChild>
-                  <button className="w-6 h-6 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center">
+                  <button className={`w-6 h-6 rounded-full hover:bg-muted flex items-center justify-center ${bubbleActionTone}`}>
                     <Smile className="w-3.5 h-3.5 text-muted-foreground" />
                   </button>
                 </PopoverTrigger>
@@ -523,7 +536,7 @@ function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onRe
               {isOwn && !isFile && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="w-6 h-6 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center">
+                    <button className={`w-6 h-6 rounded-full hover:bg-muted flex items-center justify-center ${bubbleActionTone}`}>
                       <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
                     </button>
                   </DropdownMenuTrigger>
@@ -539,7 +552,7 @@ function MessageBubble({ msg, isOwn, senderName, userId, roomId, reactions, onRe
               )}
 
               {isOwn && isFile && (
-                <button onClick={() => setShowDeleteDialog(true)} className="w-6 h-6 rounded-full bg-muted/80 hover:bg-destructive/20 flex items-center justify-center">
+                <button onClick={() => setShowDeleteDialog(true)} className={`w-6 h-6 rounded-full hover:bg-destructive/20 flex items-center justify-center ${bubbleActionTone}`}>
                   <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
                 </button>
               )}
