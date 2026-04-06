@@ -159,18 +159,41 @@ export default function ChatRooms() {
                     <p className="text-xs text-muted-foreground">Loading rooms...</p>
                   </div>
                 )}
-                {rooms.map((room) => (
-                  <button key={room.id} onClick={() => setSelectedRoom(room)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all ${selectedRoom?.id === room.id ? "bg-primary/10 border border-primary/20 shadow-sm" : "hover:bg-muted/50 border border-transparent"}`}>
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <MessageSquare className="w-4.5 h-4.5 text-primary" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-foreground truncate">{room.name}</p>
-                      <p className="text-[11px] text-muted-foreground">Created {format(new Date(room.created_at), "MMM d, yyyy")}</p>
-                    </div>
-                  </button>
-                ))}
+                {rooms.map((room) => {
+                  const preview = roomPreviews.get(room.id);
+                  const lastMsg = preview?.lastMessage;
+                  const unread = preview?.unreadCount || 0;
+                  return (
+                    <button key={room.id} onClick={() => setSelectedRoom(room)}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all ${selectedRoom?.id === room.id ? "bg-primary/10 border border-primary/20 shadow-sm" : "hover:bg-muted/50 border border-transparent"}`}>
+                      <div className="relative w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <MessageSquare className="w-4.5 h-4.5 text-primary" />
+                        {unread > 0 && (
+                          <Badge className="absolute -top-1.5 -right-1.5 h-5 min-w-[20px] px-1 text-[10px] flex items-center justify-center bg-destructive text-destructive-foreground border-2 border-background">
+                            {unread > 99 ? "99+" : unread}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`text-sm truncate ${unread > 0 ? "font-bold text-foreground" : "font-medium text-foreground"}`}>{room.name}</p>
+                          {lastMsg && (
+                            <span className="text-[10px] text-muted-foreground flex-shrink-0">
+                              {formatDistanceToNow(new Date(lastMsg.created_at), { addSuffix: false })}
+                            </span>
+                          )}
+                        </div>
+                        <p className={`text-[11px] truncate mt-0.5 ${unread > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                          {lastMsg
+                            ? lastMsg.message_type === "file"
+                              ? `📎 ${lastMsg.file_name || "File"}`
+                              : lastMsg.content
+                            : "No messages yet"}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
                 {rooms.length === 0 && !isLoading && (
                   <EmptyRoomsState onCreateClick={() => setShowCreate(true)} onJoinClick={() => setShowJoin(true)} />
                 )}
