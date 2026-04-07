@@ -46,7 +46,7 @@ export function useChatRooms() {
         .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data as ChatRoom[];
+      return (data || []) as ChatRoom[];
     },
     enabled: !!user,
   });
@@ -61,7 +61,7 @@ export function useChatMembers(roomId?: string) {
         .select("*")
         .eq("room_id", roomId!);
       if (error) throw error;
-      return data as ChatMember[];
+      return (data || []) as ChatMember[];
     },
     enabled: !!roomId,
   });
@@ -74,13 +74,7 @@ export function useChatMessages(roomId?: string) {
     if (!roomId) return;
     const channel = supabase
       .channel(`room-${roomId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages", filter: `room_id=eq.${roomId}` }, () => {
-        qc.invalidateQueries({ queryKey: ["chat-messages", roomId] });
-      })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "chat_messages", filter: `room_id=eq.${roomId}` }, () => {
-        qc.invalidateQueries({ queryKey: ["chat-messages", roomId] });
-      })
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "chat_messages", filter: `room_id=eq.${roomId}` }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "chat_messages", filter: `room_id=eq.${roomId}` }, () => {
         qc.invalidateQueries({ queryKey: ["chat-messages", roomId] });
       })
       .subscribe();
@@ -96,9 +90,49 @@ export function useChatMessages(roomId?: string) {
         .eq("room_id", roomId!)
         .order("created_at", { ascending: true });
       if (error) throw error;
-      return data as ChatMessage[];
+      return (data || []) as ChatMessage[];
     },
     enabled: !!roomId,
+  });
+}
+
+/** Fetch last message + unread count for multiple rooms at once */
+export function useRoomPreviews(roomIds: string[], userId?: string) {
+  return useQuery({
+    queryKey: ["room-previews", roomIds.join(","), userId],
+    queryFn: async () => {
+      if (roomIds.length === 0) return new Map<string, { lastMessage: ChatMessage | null; unreadCount: number }>();
+
+      // Fetch last 50 messages per room for preview (avoids 1000 row limit issues)
+      const results = new Map<string, { lastMessage: ChatMessage | null; unreadCount: number }>();
+
+      // Batch: get all messages from all rooms the user is in
+      const { data, error } = await supabase
+        .from("chat_messages")
+        .select("*")
+        .in("room_id", roomIds)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Room previews error:", error);
+        return results;
+      }
+
+      const messages = (data || []) as ChatMessage[];
+
+      for (const roomId of roomIds) {
+        const roomMsgs = messages.filter((m) => m.room_id === roomId);
+        const lastMessage = roomMsgs.length > 0 ? roomMsgs[0] : null;
+        const unreadCount = userId
+          ? roomMsgs.filter((m) => m.user_id !== userId && !(m.read_by || []).includes(userId)).length
+          : 0;
+        results.set(roomId, { lastMessage, unreadCount });
+      }
+
+      return results;
+    },
+    enabled: roomIds.length > 0 && !!userId,
+    refetchInterval: 10000, // refresh every 10s for live unread counts
   });
 }
 
@@ -109,12 +143,12 @@ export function useCreateRoom() {
     mutationFn: async (name: string) => {
       if (!user) throw new Error("Not authenticated");
       const displayName = user.user_metadata?.full_name || user.email?.split("@")[0] || "User";
-      const { data, error } = await supabase.rpc("create_chat_room" as never, {
+      const { data, error } = await supabase.rpc("create_chat_room", {
         _name: name,
         _display_name: displayName,
-      } as never);
+      });
       if (error) throw error;
-      return data as ChatRoom;
+      return data as unknown as ChatRoom;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["chat-rooms"] });
@@ -131,12 +165,12 @@ export function useJoinRoom() {
     mutationFn: async (inviteCode: string) => {
       if (!user) throw new Error("Not authenticated");
       const displayName = user.user_metadata?.full_name || user.email?.split("@")[0] || "User";
-      const { data, error } = await supabase.rpc("join_chat_room_by_invite" as never, {
+      const { data, error } = await supabase.rpc("join_chat_room_by_invite", {
         _invite_code: inviteCode.trim(),
         _display_name: displayName,
-      } as never);
+      });
       if (error) throw error;
-      return data as ChatRoom;
+      return data as unknown as ChatRoom;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["chat-rooms"] });
@@ -153,19 +187,24 @@ export function useSendMessage() {
       roomId: string; content: string; messageType?: string; fileName?: string; fileUrl?: string; fileSize?: number; replyToId?: string;
     }) => {
       if (!user) throw new Error("Not authenticated");
-      const { error } = await supabase.from("chat_messages").insert({
+      const payload: Record<string, unknown> = {
         room_id: roomId,
         user_id: user.id,
         content,
         message_type: messageType,
-        file_name: fileName || null,
-        file_url: fileUrl || null,
-        file_size: fileSize || null,
-        reply_to_id: replyToId || null,
-      } as any);
+      };
+      if (fileName) payload.file_name = fileName;
+      if (fileUrl) payload.file_url = fileUrl;
+      if (fileSize) payload.file_size = fileSize;
+      if (replyToId) payload.reply_to_id = replyToId;
+
+      const { error } = await supabase.from("chat_messages").insert(payload as any);
       if (error) throw error;
     },
-    onError: () => toast.error("Failed to send message"),
+    onError: (err: Error) => {
+      console.error("Send message error:", err);
+      toast.error("Failed to send message");
+    },
   });
 }
 
