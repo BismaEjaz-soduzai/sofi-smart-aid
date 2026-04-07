@@ -11,7 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   useChatRooms, useChatMembers, useChatMessages, useCreateRoom,
   useJoinRoom, useSendMessage, useUploadChatFile, useLeaveRoom,
-  useEditMessage, useDeleteMessage,
+  useEditMessage, useDeleteMessage, useRoomPreviews,
   type ChatRoom, type ChatMessage
 } from "@/hooks/useChat";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
@@ -53,20 +53,8 @@ export default function ChatRooms() {
   const [newRoomName, setNewRoomName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
 
-  // Fetch messages for all rooms to get last message & unread counts
-  const roomMessageQueries = rooms.map((r) => useChatMessages(r.id));
-  const roomPreviews = useMemo(() => {
-    const map = new Map<string, { lastMessage: ChatMessage | null; unreadCount: number }>();
-    rooms.forEach((room, i) => {
-      const msgs = roomMessageQueries[i]?.data || [];
-      const lastMessage = msgs.length > 0 ? msgs[msgs.length - 1] : null;
-      const unreadCount = user ? msgs.filter(
-        (m) => m.user_id !== user.id && !(m.read_by || []).includes(user.id)
-      ).length : 0;
-      map.set(room.id, { lastMessage, unreadCount });
-    });
-    return map;
-  }, [rooms, roomMessageQueries, user]);
+  const roomIds = rooms.map((r) => r.id);
+  const { data: roomPreviews = new Map() } = useRoomPreviews(roomIds, user?.id);
 
   const handleCreate = async () => {
     if (!newRoomName.trim()) return;
@@ -350,8 +338,12 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   const onlineCount = members.filter((m) => isOnline(m.user_id)).length;
 
   const copyInvite = () => {
+    if (!room.invite_code) {
+      toast.error("No invite code available for this room");
+      return;
+    }
     navigator.clipboard.writeText(room.invite_code);
-    toast.success("Invite code copied! Share it with friends to let them join.");
+    toast.success(`Invite code copied: ${room.invite_code}`);
   };
 
   const handleStartCall = (video: boolean) => {
