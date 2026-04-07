@@ -53,20 +53,8 @@ export default function ChatRooms() {
   const [newRoomName, setNewRoomName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
 
-  // Fetch messages for all rooms to get last message & unread counts
-  const roomMessageQueries = rooms.map((r) => useChatMessages(r.id));
-  const roomPreviews = useMemo(() => {
-    const map = new Map<string, { lastMessage: ChatMessage | null; unreadCount: number }>();
-    rooms.forEach((room, i) => {
-      const msgs = roomMessageQueries[i]?.data || [];
-      const lastMessage = msgs.length > 0 ? msgs[msgs.length - 1] : null;
-      const unreadCount = user ? msgs.filter(
-        (m) => m.user_id !== user.id && !(m.read_by || []).includes(user.id)
-      ).length : 0;
-      map.set(room.id, { lastMessage, unreadCount });
-    });
-    return map;
-  }, [rooms, roomMessageQueries, user]);
+  const roomIds = rooms.map((r) => r.id);
+  const { data: roomPreviews = new Map() } = useRoomPreviews(roomIds, user?.id);
 
   const handleCreate = async () => {
     if (!newRoomName.trim()) return;
