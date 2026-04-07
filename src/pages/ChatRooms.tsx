@@ -338,8 +338,12 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   const onlineCount = members.filter((m) => isOnline(m.user_id)).length;
 
   const copyInvite = () => {
+    if (!room.invite_code) {
+      toast.error("No invite code available for this room");
+      return;
+    }
     navigator.clipboard.writeText(room.invite_code);
-    toast.success("Invite code copied! Share it with friends to let them join.");
+    toast.success(`Invite code copied: ${room.invite_code}`);
   };
 
   const handleStartCall = (video: boolean) => {
