@@ -11,7 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   useChatRooms, useChatMembers, useChatMessages, useCreateRoom,
   useJoinRoom, useSendMessage, useUploadChatFile, useLeaveRoom,
-  useEditMessage, useDeleteMessage,
+  useEditMessage, useDeleteMessage, useRoomPreviews,
   type ChatRoom, type ChatMessage
 } from "@/hooks/useChat";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
