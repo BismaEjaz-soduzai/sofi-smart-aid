@@ -450,6 +450,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_access_chat_message: {
+        Args: { _message_id: string; _user_id: string }
+        Returns: boolean
+      }
       create_chat_room: {
         Args: { _display_name?: string; _name: string }
         Returns: {
@@ -467,6 +471,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      is_chat_room_member: {
+        Args: { _room_id: string; _user_id: string }
+        Returns: boolean
       }
       join_chat_room_by_invite: {
         Args: { _display_name?: string; _invite_code: string }
