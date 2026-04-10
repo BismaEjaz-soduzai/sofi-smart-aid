@@ -134,3 +134,16 @@
     @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-info;
   }
 }
+
+/* High contrast mode */
+.high-contrast {
+  --foreground: 220 25% 5%;
+  --muted-foreground: 215 14% 30%;
+  --border: 214 20% 70%;
+}
+
+.dark.high-contrast {
+  --foreground: 210 20% 98%;
+  --muted-foreground: 215 12% 75%;
+  --border: 220 14% 30%;
+}
