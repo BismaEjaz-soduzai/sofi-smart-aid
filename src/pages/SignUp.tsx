@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Mail, Lock, User, Sparkles, ArrowRight, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { lovable } from "@/integrations/lovable/index";
 import AuthLayout from "@/components/AuthLayout";
 import { Field, SocialButton, GoogleIcon, AppleIcon } from "@/pages/Login";
 import { toast } from "sonner";
@@ -65,7 +66,12 @@ export default function SignUp() {
         </div>
 
         <div className="space-y-2.5">
-          <SocialButton icon={<GoogleIcon />} label="Continue with Google" onClick={signInWithGoogle} />
+          <SocialButton icon={<GoogleIcon />} label="Continue with Google" onClick={async () => {
+            const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
+            if (result.error) { toast.error("Google sign-in failed"); return; }
+            if (result.redirected) return;
+            navigate("/dashboard");
+          }} />
           <SocialButton icon={<AppleIcon />} label="Continue with Apple" onClick={signInWithApple} />
         </div>
 

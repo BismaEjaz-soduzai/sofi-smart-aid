@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Mail, Lock, Sparkles, ArrowRight, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { lovable } from "@/integrations/lovable/index";
 import AuthLayout from "@/components/AuthLayout";
 import { toast } from "sonner";
 
@@ -39,7 +40,15 @@ export default function Login() {
   };
 
   const handleGoogle = async () => {
-    await signInWithGoogle();
+    const result = await lovable.auth.signInWithOAuth("google", {
+      redirect_uri: window.location.origin,
+    });
+    if (result.error) {
+      toast.error("Google sign-in failed");
+      return;
+    }
+    if (result.redirected) return;
+    navigate("/dashboard");
   };
 
   const handleApple = async () => {
