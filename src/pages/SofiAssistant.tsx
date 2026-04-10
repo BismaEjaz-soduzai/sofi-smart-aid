@@ -4,10 +4,12 @@ import {
   Send, Sparkles, Loader2, Timer, Play, Pause, RotateCcw,
   Calendar, BookOpen, Lightbulb, PenLine, Languages, Zap,
   Presentation, GraduationCap, MessageCircle, Mic, MicOff,
-  Volume2, VolumeX, Square,
+  Volume2, VolumeX, Square, Brain,
 } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
+import VoiceMode from "@/components/sofi/VoiceMode";
+import AdaptiveInsights from "@/components/sofi/AdaptiveInsights";
 
 interface Message {
   id: string;
@@ -15,7 +17,7 @@ interface Message {
   content: string;
 }
 
-type Section = "chat" | "focus" | "tools";
+type Section = "chat" | "voice" | "focus" | "tools";
 type SessionType = "Study Session" | "Assignment Work" | "Reading" | "Project Work" | "Revision";
 
 const SESSION_TYPES: SessionType[] = ["Study Session", "Assignment Work", "Reading", "Project Work", "Revision"];
@@ -47,20 +49,46 @@ export default function SofiAssistant() {
   const [section, setSection] = useState<Section>("chat");
   const [sharedPrompt, setSharedPrompt] = useState("");
 
+  const handleAskSofi = (prompt: string) => {
+    setSharedPrompt(prompt);
+    setSection("chat");
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
       <div className="flex gap-1 p-2 border-b border-border bg-card/60 backdrop-blur-sm">
         {([
-          { key: "chat" as Section, label: "Assistant Chat", icon: MessageCircle },
-          { key: "focus" as Section, label: "Focus Zone", icon: Timer },
-          { key: "tools" as Section, label: "Quick Tools", icon: Sparkles },
+          { key: "chat" as Section, label: "Chat", icon: MessageCircle },
+          { key: "voice" as Section, label: "Voice", icon: Mic },
+          { key: "focus" as Section, label: "Focus", icon: Timer },
+          { key: "tools" as Section, label: "Tools", icon: Sparkles },
         ]).map((s) => (
-          <button key={s.key} onClick={() => setSection(s.key)} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${section === s.key ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}>
+          <button
+            key={s.key}
+            onClick={() => setSection(s.key)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              section === s.key
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+          >
             <s.icon className="w-3.5 h-3.5" /> {s.label}
           </button>
         ))}
       </div>
-      {section === "chat" && <ChatSection initialPrompt={sharedPrompt} onPromptConsumed={() => setSharedPrompt("")} />}
+
+      {section === "chat" && (
+        <div className="flex flex-1 overflow-hidden">
+          <div className="flex-1 flex flex-col">
+            <ChatSection initialPrompt={sharedPrompt} onPromptConsumed={() => setSharedPrompt("")} />
+          </div>
+          {/* Insights sidebar on larger screens */}
+          <div className="hidden lg:block w-72 border-l border-border p-4 overflow-auto bg-card/30">
+            <AdaptiveInsights onAskSofi={handleAskSofi} />
+          </div>
+        </div>
+      )}
+      {section === "voice" && <VoiceMode onSwitchToText={() => setSection("chat")} />}
       {section === "focus" && <FocusSection />}
       {section === "tools" && <ToolsSection onUsePrompt={(p) => { setSharedPrompt(p); setSection("chat"); }} />}
     </div>
@@ -88,7 +116,6 @@ function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: strin
     }
   }, [initialPrompt]);
 
-  // Speech-to-text
   const toggleListening = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) { toast.error("Speech recognition not supported in this browser"); return; }
@@ -114,7 +141,6 @@ function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: strin
     setIsListening(true);
   };
 
-  // Text-to-speech
   const speakText = (text: string) => {
     if (isSpeaking) { speechSynthesis.cancel(); setIsSpeaking(false); return; }
     const clean = text.replace(/[#*`_~\[\]()>]/g, "");
@@ -188,7 +214,11 @@ function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: strin
               <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-3"><Sparkles className="w-6 h-6 text-primary" /></div>
               <h2 className="text-lg font-bold text-foreground">Hey! I'm SOFI</h2>
               <p className="text-sm text-muted-foreground mt-1">Your personal AI assistant for study & productivity</p>
-              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1 justify-center"><Mic className="w-3 h-3" /> Click the mic to use voice input</p>
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1 justify-center"><Mic className="w-3 h-3" /> Try Voice Mode for a hands-free experience</p>
+            </div>
+            {/* Mobile insights */}
+            <div className="lg:hidden">
+              <AdaptiveInsights onAskSofi={(p) => sendMessage(p)} />
             </div>
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5"><Lightbulb className="w-3 h-3" /> Try asking</p>
@@ -224,7 +254,6 @@ function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: strin
         )}
       </div>
 
-      {/* Input */}
       <div className="p-4 border-t border-border flex-shrink-0">
         <div className="flex items-end gap-2 bg-card border border-border rounded-xl px-4 py-2 max-w-3xl mx-auto">
           <button onClick={toggleListening} className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${isListening ? "bg-destructive text-destructive-foreground animate-pulse" : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"}`}>
