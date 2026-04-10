@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -13,8 +13,7 @@ import SignUp from "@/pages/SignUp";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import Dashboard from "@/pages/Dashboard";
-import Tasks from "@/pages/Tasks";
-import Notes from "@/pages/Notes";
+import Organizer from "@/pages/Organizer";
 import Planner from "@/pages/Planner";
 import SmartWorkspace from "@/pages/SmartWorkspace";
 import SofiAssistant from "@/pages/SofiAssistant";
@@ -41,8 +40,10 @@ const App = () => (
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/tasks" element={<Tasks />} />
-              <Route path="/notes" element={<Notes />} />
+              <Route path="/organizer" element={<Organizer />} />
+              {/* Legacy redirects */}
+              <Route path="/tasks" element={<Navigate to="/organizer" replace />} />
+              <Route path="/notes" element={<Navigate to="/organizer" replace />} />
               <Route path="/planner" element={<Planner />} />
               <Route path="/workspace" element={<SmartWorkspace />} />
               <Route path="/assistant" element={<SofiAssistant />} />

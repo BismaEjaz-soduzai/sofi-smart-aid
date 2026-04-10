@@ -1,7 +1,6 @@
 import {
   LayoutDashboard,
-  CheckSquare,
-  StickyNote,
+  FolderKanban,
   Calendar,
   BookOpen,
   Sparkles,
@@ -30,8 +29,7 @@ import {
 
 const mainNav = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Tasks", url: "/tasks", icon: CheckSquare },
-  { title: "Notes", url: "/notes", icon: StickyNote },
+  { title: "Organizer", url: "/organizer", icon: FolderKanban },
   { title: "Planner", url: "/planner", icon: Calendar },
 ];
 
