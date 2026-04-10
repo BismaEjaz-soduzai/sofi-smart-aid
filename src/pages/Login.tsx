@@ -9,7 +9,7 @@ import { toast } from "sonner";
 
 export default function Login() {
   const navigate = useNavigate();
-  const { signInWithEmail, signInWithGoogle, signInWithApple } = useAuth();
+  const { signInWithEmail } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -51,10 +51,6 @@ export default function Login() {
     navigate("/dashboard");
   };
 
-  const handleApple = async () => {
-    await signInWithApple();
-  };
-
   return (
     <AuthLayout>
       <motion.div
@@ -79,7 +75,6 @@ export default function Login() {
         {/* Social buttons */}
         <div className="space-y-2.5">
           <SocialButton icon={<GoogleIcon />} label="Continue with Google" onClick={handleGoogle} />
-          <SocialButton icon={<AppleIcon />} label="Continue with Apple" onClick={handleApple} />
         </div>
 
         <div className="flex items-center gap-3">

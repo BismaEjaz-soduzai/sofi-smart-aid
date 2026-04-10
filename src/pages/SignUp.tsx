@@ -5,12 +5,12 @@ import { Eye, EyeOff, Mail, Lock, User, Sparkles, ArrowRight, Loader2 } from "lu
 import { useAuth } from "@/contexts/AuthContext";
 import { lovable } from "@/integrations/lovable/index";
 import AuthLayout from "@/components/AuthLayout";
-import { Field, SocialButton, GoogleIcon, AppleIcon } from "@/pages/Login";
+import { Field, SocialButton, GoogleIcon } from "@/pages/Login";
 import { toast } from "sonner";
 
 export default function SignUp() {
   const navigate = useNavigate();
-  const { signUpWithEmail, signInWithGoogle, signInWithApple } = useAuth();
+  const { signUpWithEmail } = useAuth();
   const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
   const [showPw, setShowPw] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -72,7 +72,6 @@ export default function SignUp() {
             if (result.redirected) return;
             navigate("/dashboard");
           }} />
-          <SocialButton icon={<AppleIcon />} label="Continue with Apple" onClick={signInWithApple} />
         </div>
 
         <div className="flex items-center gap-3">
