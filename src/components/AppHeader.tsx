@@ -8,12 +8,13 @@ import { NotificationCenter } from "@/components/NotificationCenter";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
-  "/tasks": "Tasks",
-  "/notes": "Notes",
+  "/organizer": "Organizer",
   "/planner": "Planner",
   "/workspace": "Smart Workspace",
   "/assistant": "SOFI Assistant",
   "/settings": "Settings",
+  "/profile": "Profile",
+  "/chat": "Study Chat",
 };
 
 export function AppHeader() {
@@ -27,9 +28,7 @@ export function AppHeader() {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
-        setProfileOpen(false);
-      }
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -40,14 +39,8 @@ export function AppHeader() {
     navigate("/login");
   };
 
-  const displayName =
-    user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
-  const initials = displayName
-    .split(" ")
-    .map((n: string) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+  const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
+  const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
 
   return (
     <header className="h-14 flex items-center justify-between border-b border-border px-4 lg:px-6 bg-card/60 backdrop-blur-xl sticky top-0 z-20">
@@ -55,9 +48,7 @@ export function AppHeader() {
         <SidebarTrigger className="text-muted-foreground hover:text-foreground transition-colors lg:hidden">
           <Menu className="w-4 h-4" />
         </SidebarTrigger>
-        <h2 className="text-sm font-semibold text-foreground tracking-tight truncate">
-          {pageTitle}
-        </h2>
+        <h2 className="text-sm font-semibold text-foreground tracking-tight truncate">{pageTitle}</h2>
       </div>
 
       <div className="flex items-center gap-1.5">
@@ -65,18 +56,12 @@ export function AppHeader() {
         <NotificationCenter />
         <div className="w-px h-5 bg-border mx-1" />
 
-        {/* Profile dropdown */}
         <div ref={profileRef} className="relative">
-          <button
-            onClick={() => setProfileOpen(!profileOpen)}
-            className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-muted/50 transition-colors"
-          >
+          <button onClick={() => setProfileOpen(!profileOpen)} className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-muted/50 transition-colors">
             <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
               <span className="text-[10px] font-semibold text-primary">{initials}</span>
             </div>
-            <span className="text-sm text-foreground font-medium hidden sm:block max-w-[100px] truncate">
-              {displayName}
-            </span>
+            <span className="text-sm text-foreground font-medium hidden sm:block max-w-[100px] truncate">{displayName}</span>
             <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${profileOpen ? "rotate-180" : ""}`} />
           </button>
 
@@ -86,7 +71,7 @@ export function AppHeader() {
                 <p className="text-sm font-medium text-foreground truncate">{displayName}</p>
                 <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
               </div>
-              <DropdownItem icon={User} label="Profile" onClick={() => { setProfileOpen(false); navigate("/settings"); }} />
+              <DropdownItem icon={User} label="Profile" onClick={() => { setProfileOpen(false); navigate("/profile"); }} />
               <DropdownItem icon={Settings} label="Settings" onClick={() => { setProfileOpen(false); navigate("/settings"); }} />
               <div className="border-t border-border mt-1 pt-1">
                 <DropdownItem icon={LogOut} label="Sign Out" onClick={handleSignOut} destructive />
@@ -99,16 +84,9 @@ export function AppHeader() {
   );
 }
 
-function DropdownItem({
-  icon: Icon, label, onClick, destructive,
-}: { icon: any; label: string; onClick: () => void; destructive?: boolean }) {
+function DropdownItem({ icon: Icon, label, onClick, destructive }: { icon: any; label: string; onClick: () => void; destructive?: boolean }) {
   return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${
-        destructive ? "text-destructive hover:bg-destructive/5" : "text-foreground hover:bg-muted/50"
-      }`}
-    >
+    <button onClick={onClick} className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${destructive ? "text-destructive hover:bg-destructive/5" : "text-foreground hover:bg-muted/50"}`}>
       <Icon className="w-3.5 h-3.5" />
       {label}
     </button>
