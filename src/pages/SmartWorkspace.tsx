@@ -3,9 +3,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload, FileText, File, Presentation, FileType, Search,
   Trash2, Sparkles, BookOpen, ClipboardList, HelpCircle, LayoutList, X,
-  GraduationCap, Lightbulb, Loader2, Send,
+  GraduationCap, Lightbulb, Loader2, Send, Download, Eye,
 } from "lucide-react";
 import { useStudyFiles, StudyFile } from "@/hooks/useStudyFiles";
+import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -23,13 +24,13 @@ const FILE_COLORS: Record<string, string> = {
 };
 
 const ACTIONS = [
-  { label: "Explain", icon: HelpCircle, prompt: "Explain this file in simple words" },
-  { label: "Summarize", icon: BookOpen, prompt: "Summarize this file" },
-  { label: "Notes", icon: ClipboardList, prompt: "Generate study notes from this file" },
-  { label: "Quiz", icon: Sparkles, prompt: "Create quiz questions from this file" },
-  { label: "Assignment", icon: LayoutList, prompt: "Create an assignment draft from this file" },
-  { label: "Outline", icon: Presentation, prompt: "Create presentation outline from this file" },
-  { label: "Viva", icon: GraduationCap, prompt: "Generate viva questions from this file" },
+  { label: "Explain", icon: HelpCircle, prompt: "Explain this document in simple words" },
+  { label: "Summarize", icon: BookOpen, prompt: "Summarize this document" },
+  { label: "Notes", icon: ClipboardList, prompt: "Generate study notes from this document" },
+  { label: "Quiz", icon: Sparkles, prompt: "Create quiz questions from this document" },
+  { label: "Assignment", icon: LayoutList, prompt: "Create an assignment draft from this document" },
+  { label: "Outline", icon: Presentation, prompt: "Create presentation outline from this document" },
+  { label: "Viva", icon: GraduationCap, prompt: "Generate viva questions from this document" },
 ];
 
 const AI_TOOLS = [
@@ -61,6 +62,50 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Download a file from storage and return its text content (for text-based files) */
+async function fetchFileContent(file: StudyFile): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.storage
+      .from("study-files")
+      .download(file.file_path);
+    if (error || !data) {
+      console.error("Failed to download file:", error);
+      return null;
+    }
+    // For text-based files, read as text
+    const textTypes = ["TXT", "CSV", "MD"];
+    if (textTypes.includes(file.file_type)) {
+      return await data.text();
+    }
+    // For PDF/DOCX/PPT - try reading as text (best effort)
+    // Real parsing would need a server-side solution
+    const text = await data.text();
+    if (text && text.length > 50 && !text.includes("\u0000")) {
+      return text;
+    }
+    return `[Binary file: ${file.file_name} (${file.file_type}, ${formatSize(file.file_size)}). Content cannot be extracted client-side. Please describe what you'd like to know about this file.]`;
+  } catch (e) {
+    console.error("Error fetching file:", e);
+    return null;
+  }
+}
+
+/** Get a viewable/downloadable URL for a file */
+function getFileUrl(file: StudyFile): string | null {
+  const { data } = supabase.storage
+    .from("study-files")
+    .getPublicUrl(file.file_path);
+  return data?.publicUrl || null;
+}
+
+async function getSignedUrl(file: StudyFile): Promise<string | null> {
+  const { data, error } = await supabase.storage
+    .from("study-files")
+    .createSignedUrl(file.file_path, 3600); // 1 hour
+  if (error) { console.error("Signed URL error:", error); return null; }
+  return data?.signedUrl || null;
+}
+
 export default function SmartWorkspace() {
   const { files, isLoading, uploadFile, deleteFile } = useStudyFiles();
   const [tab, setTab] = useState<Tab>("uploads");
@@ -90,10 +135,37 @@ export default function SmartWorkspace() {
     e.target.value = "";
   };
 
-  const handleFileAction = (file: StudyFile, prompt: string) => {
-    const fullPrompt = `${prompt}: "${file.file_name}"`;
-    setAiInput(fullPrompt);
-    setTab("ai-tools");
+  const handleOpenFile = async (file: StudyFile) => {
+    const url = await getSignedUrl(file);
+    if (url) {
+      window.open(url, "_blank");
+    } else {
+      toast.error("Could not open file. Try downloading instead.");
+    }
+  };
+
+  const handleDownloadFile = async (file: StudyFile) => {
+    const url = await getSignedUrl(file);
+    if (!url) { toast.error("Could not generate download link"); return; }
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.file_name;
+    a.click();
+  };
+
+  const handleFileAction = async (file: StudyFile, prompt: string) => {
+    setAiLoading(true);
+    setIsStreaming(true);
+    setCurrentOutput("");
+    setTab("generated");
+
+    // Fetch actual file content
+    const content = await fetchFileContent(file);
+    const fullPrompt = content
+      ? `${prompt}\n\nFile: "${file.file_name}"\n\nContent:\n${content.slice(0, 15000)}`
+      : `${prompt}: "${file.file_name}" (could not read file content — please provide general guidance)`;
+
+    await runAiStream(fullPrompt);
   };
 
   const handleAiSubmit = async (prompt?: string) => {
@@ -103,7 +175,10 @@ export default function SmartWorkspace() {
     setIsStreaming(true);
     setCurrentOutput("");
     setTab("generated");
+    await runAiStream(text);
+  };
 
+  const runAiStream = async (text: string) => {
     let content = "";
     try {
       const resp = await fetch(CHAT_URL, {
@@ -112,9 +187,7 @@ export default function SmartWorkspace() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({
-          messages: [{ role: "user", content: text }],
-        }),
+        body: JSON.stringify({ messages: [{ role: "user", content: text }] }),
       });
 
       if (!resp.ok) {
@@ -143,10 +216,7 @@ export default function SmartWorkspace() {
           try {
             const parsed = JSON.parse(json);
             const c = parsed.choices?.[0]?.delta?.content;
-            if (c) {
-              content += c;
-              setCurrentOutput(content);
-            }
+            if (c) { content += c; setCurrentOutput(content); }
           } catch {
             buffer = line + "\n" + buffer;
             break;
@@ -155,7 +225,7 @@ export default function SmartWorkspace() {
       }
 
       setGeneratedItems((prev) => [
-        { id: crypto.randomUUID(), prompt: text, content, createdAt: new Date().toISOString() },
+        { id: crypto.randomUUID(), prompt: text.slice(0, 200), content, createdAt: new Date().toISOString() },
         ...prev,
       ]);
     } catch (e: any) {
@@ -175,26 +245,15 @@ export default function SmartWorkspace() {
 
   return (
     <div className="p-4 lg:p-6 max-w-5xl mx-auto space-y-5">
-      {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-foreground">Smart Workspace</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Upload materials, use AI tools, and generate academic content
-        </p>
+        <p className="text-sm text-muted-foreground mt-0.5">Upload materials, use AI tools, and generate academic content</p>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 bg-muted/50 rounded-xl p-1">
         {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
-              tab === t.key
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${tab === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
             {t.label}
           </button>
         ))}
@@ -203,14 +262,11 @@ export default function SmartWorkspace() {
       {/* TAB: Uploads */}
       {tab === "uploads" && (
         <div className="space-y-4">
-          {/* Upload Area */}
           <div
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
-            className={`relative rounded-2xl border-2 border-dashed transition-all duration-200 p-8 text-center ${
-              dragOver ? "border-primary bg-primary/5 scale-[1.01]" : "border-border hover:border-primary/40 bg-card"
-            }`}
+            className={`relative rounded-2xl border-2 border-dashed transition-all duration-200 p-8 text-center ${dragOver ? "border-primary bg-primary/5 scale-[1.01]" : "border-border hover:border-primary/40 bg-card"}`}
           >
             <input type="file" accept={ACCEPTED} multiple onChange={handleFileSelect} className="absolute inset-0 opacity-0 cursor-pointer" />
             <div className="flex flex-col items-center gap-3">
@@ -225,14 +281,12 @@ export default function SmartWorkspace() {
             {uploadFile.isPending && (
               <div className="absolute inset-0 bg-card/80 backdrop-blur-sm rounded-2xl flex items-center justify-center">
                 <div className="flex items-center gap-2 text-sm text-primary font-medium">
-                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                  Uploading...
+                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" /> Uploading...
                 </div>
               </div>
             )}
           </div>
 
-          {/* Search */}
           {files.length > 0 && (
             <div className="flex items-center gap-2 bg-muted/50 rounded-xl px-3 py-2">
               <Search className="w-4 h-4 text-muted-foreground" />
@@ -241,7 +295,6 @@ export default function SmartWorkspace() {
             </div>
           )}
 
-          {/* File list */}
           {isLoading ? (
             <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-20 rounded-xl bg-muted/50 animate-pulse" />)}</div>
           ) : filtered.length === 0 ? (
@@ -266,7 +319,18 @@ export default function SmartWorkspace() {
                             <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${color}`}>{file.file_type}</span>
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5">{formatSize(file.file_size)} · {format(new Date(file.created_at), "MMM d, yyyy")}</p>
-                          <div className="flex flex-wrap gap-1.5 mt-3">
+                          
+                          {/* Open / Download buttons */}
+                          <div className="flex gap-2 mt-2 mb-2">
+                            <button onClick={() => handleOpenFile(file)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+                              <Eye className="w-3 h-3" /> Open
+                            </button>
+                            <button onClick={() => handleDownloadFile(file)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
+                              <Download className="w-3 h-3" /> Download
+                            </button>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5">
                             {ACTIONS.map((action) => (
                               <button key={action.label} onClick={() => handleFileAction(file, action.prompt)} className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-muted/60 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors">
                                 <action.icon className="w-3 h-3" />{action.label}
@@ -290,7 +354,6 @@ export default function SmartWorkspace() {
       {/* TAB: AI Tools */}
       {tab === "ai-tools" && (
         <div className="space-y-5">
-          {/* Input */}
           <div className="flex items-end gap-2 bg-card border border-border rounded-xl px-4 py-3">
             <textarea
               value={aiInput}
@@ -304,8 +367,6 @@ export default function SmartWorkspace() {
               {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
-
-          {/* Tool buttons */}
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Academic AI Tools</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
