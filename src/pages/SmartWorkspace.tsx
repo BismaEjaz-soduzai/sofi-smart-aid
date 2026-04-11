@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload, FileText, File, Presentation, FileType, Search,
@@ -72,15 +72,8 @@ async function fetchFileContent(file: StudyFile): Promise<string | null> {
       console.error("Failed to download file:", error);
       return null;
     }
-    // For text-based files, read as text
-    const textTypes = ["TXT", "CSV", "MD"];
-    if (textTypes.includes(file.file_type)) {
-      return await data.text();
-    }
-    // For PDF/DOCX/PPT - try reading as text (best effort)
-    // Real parsing would need a server-side solution
     const text = await data.text();
-    if (text && text.length > 50 && !text.includes("\u0000")) {
+    if (text && text.length > 20 && !text.includes("\u0000")) {
       return text;
     }
     return `[Binary file: ${file.file_name} (${file.file_type}, ${formatSize(file.file_size)}). Content cannot be extracted client-side. Please describe what you'd like to know about this file.]`;
@@ -90,18 +83,20 @@ async function fetchFileContent(file: StudyFile): Promise<string | null> {
   }
 }
 
-/** Get a viewable/downloadable URL for a file */
-function getFileUrl(file: StudyFile): string | null {
-  const { data } = supabase.storage
-    .from("study-files")
-    .getPublicUrl(file.file_path);
-  return data?.publicUrl || null;
+/** Read a local File object as text */
+async function readLocalFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsText(file);
+  });
 }
 
 async function getSignedUrl(file: StudyFile): Promise<string | null> {
   const { data, error } = await supabase.storage
     .from("study-files")
-    .createSignedUrl(file.file_path, 3600); // 1 hour
+    .createSignedUrl(file.file_path, 3600);
   if (error) { console.error("Signed URL error:", error); return null; }
   return data?.signedUrl || null;
 }
@@ -116,6 +111,8 @@ export default function SmartWorkspace() {
   const [generatedItems, setGeneratedItems] = useState<GeneratedItem[]>([]);
   const [currentOutput, setCurrentOutput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [localFiles, setLocalFiles] = useState<File[]>([]);
+  const localFileRef = useRef<HTMLInputElement>(null);
 
   const filtered = files.filter((f) =>
     f.file_name.toLowerCase().includes(search.toLowerCase())
@@ -125,13 +122,47 @@ export default function SmartWorkspace() {
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragOver(false);
-      Array.from(e.dataTransfer.files).forEach((f) => uploadFile.mutate(f));
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      // Upload to cloud
+      droppedFiles.forEach((f) => uploadFile.mutate(f));
+      // Also keep local references for immediate AI processing
+      setLocalFiles((prev) => [...prev, ...droppedFiles]);
     },
     [uploadFile]
   );
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) Array.from(e.target.files).forEach((f) => uploadFile.mutate(f));
+    if (e.target.files) {
+      const selected = Array.from(e.target.files);
+      selected.forEach((f) => uploadFile.mutate(f));
+      setLocalFiles((prev) => [...prev, ...selected]);
+    }
+    e.target.value = "";
+  };
+
+  /** Process a local file with AI directly (no cloud needed) */
+  const handleLocalFileAction = async (file: File, prompt: string) => {
+    setAiLoading(true);
+    setIsStreaming(true);
+    setCurrentOutput("");
+    setTab("generated");
+    try {
+      const content = await readLocalFile(file);
+      const fullPrompt = `${prompt}\n\nFile: "${file.name}"\n\nContent:\n${content.slice(0, 15000)}`;
+      await runAiStream(fullPrompt);
+    } catch {
+      toast.error("Could not read file. It may be a binary format.");
+      setAiLoading(false);
+      setIsStreaming(false);
+    }
+  };
+
+  /** Add local files for AI processing without uploading */
+  const handleAddLocalFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setLocalFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+      toast.success(`${e.target.files.length} file(s) added for AI processing`);
+    }
     e.target.value = "";
   };
 
@@ -367,6 +398,41 @@ export default function SmartWorkspace() {
               {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
+          {/* Local files for AI processing */}
+          {localFiles.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5"><FileText className="w-3 h-3" /> Local Files (ready for AI)</p>
+              <div className="space-y-2">
+                {localFiles.map((file, idx) => (
+                  <div key={`${file.name}-${idx}`} className="flex items-center justify-between bg-card border border-border rounded-lg p-2.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm text-foreground truncate">{file.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{formatSize(file.size)}</span>
+                    </div>
+                    <div className="flex gap-1 flex-shrink-0">
+                      {ACTIONS.slice(0, 3).map((action) => (
+                        <button key={action.label} onClick={() => handleLocalFileAction(file, action.prompt)} className="px-2 py-1 rounded text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+                          {action.label}
+                        </button>
+                      ))}
+                      <button onClick={() => setLocalFiles((prev) => prev.filter((_, i) => i !== idx))} className="px-1.5 py-1 rounded text-[10px] text-destructive/70 hover:bg-destructive/10">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <input ref={localFileRef} type="file" accept={ACCEPTED + ",.csv,.md"} multiple onChange={handleAddLocalFiles} className="hidden" />
+            <button onClick={() => localFileRef.current?.click()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-muted/60 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors border border-dashed border-border">
+              <Upload className="w-3.5 h-3.5" /> Add local files for AI
+            </button>
+          </div>
+
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Academic AI Tools</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
