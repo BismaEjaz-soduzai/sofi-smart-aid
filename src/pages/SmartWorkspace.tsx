@@ -398,6 +398,41 @@ export default function SmartWorkspace() {
               {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
+          {/* Local files for AI processing */}
+          {localFiles.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5"><FileText className="w-3 h-3" /> Local Files (ready for AI)</p>
+              <div className="space-y-2">
+                {localFiles.map((file, idx) => (
+                  <div key={`${file.name}-${idx}`} className="flex items-center justify-between bg-card border border-border rounded-lg p-2.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm text-foreground truncate">{file.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{formatSize(file.size)}</span>
+                    </div>
+                    <div className="flex gap-1 flex-shrink-0">
+                      {ACTIONS.slice(0, 3).map((action) => (
+                        <button key={action.label} onClick={() => handleLocalFileAction(file, action.prompt)} className="px-2 py-1 rounded text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+                          {action.label}
+                        </button>
+                      ))}
+                      <button onClick={() => setLocalFiles((prev) => prev.filter((_, i) => i !== idx))} className="px-1.5 py-1 rounded text-[10px] text-destructive/70 hover:bg-destructive/10">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <input ref={localFileRef} type="file" accept={ACCEPTED + ",.csv,.md"} multiple onChange={handleAddLocalFiles} className="hidden" />
+            <button onClick={() => localFileRef.current?.click()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-muted/60 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors border border-dashed border-border">
+              <Upload className="w-3.5 h-3.5" /> Add local files for AI
+            </button>
+          </div>
+
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Academic AI Tools</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
