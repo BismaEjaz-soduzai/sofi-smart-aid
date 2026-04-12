@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import VoiceMode from "@/components/sofi/VoiceMode";
 import AdaptiveInsights from "@/components/sofi/AdaptiveInsights";
+import { useFocusTimer } from "@/contexts/FocusTimerContext";
 
 interface Message {
   id: string;
@@ -95,6 +96,115 @@ export default function SofiAssistant() {
   );
 }
 
+// ─── Helpers for file text extraction ──────────────────
+async function extractTextFromFile(file: File): Promise<string> {
+  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+  
+  if (["txt", "md", "csv", "text", "json", "xml", "html", "css", "js", "ts", "py"].includes(ext)) {
+    return await file.text();
+  }
+  
+  if (ext === "pdf") {
+    // Read as ArrayBuffer and extract text from PDF
+    const buffer = await file.arrayBuffer();
+    return extractPdfText(buffer, file.name);
+  }
+  
+  if (ext === "docx" || ext === "doc") {
+    const buffer = await file.arrayBuffer();
+    return extractDocxText(buffer, file.name);
+  }
+  
+  // Fallback: try reading as text
+  try {
+    const text = await file.text();
+    if (text && text.length > 10 && !text.includes("\u0000")) return text;
+  } catch {}
+  
+  return `[Could not extract text from ${file.name}. File type: ${ext}]`;
+}
+
+async function extractPdfText(buffer: ArrayBuffer, fileName: string): Promise<string> {
+  // Simple PDF text extraction - parse text objects from the raw PDF
+  try {
+    const bytes = new Uint8Array(buffer);
+    const text = new TextDecoder("latin1").decode(bytes);
+    
+    // Extract text between BT and ET markers (text objects)
+    const textParts: string[] = [];
+    const regex = /\(([^)]*)\)/g;
+    let match;
+    
+    // Find stream content and extract readable strings
+    const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+    let streamMatch;
+    while ((streamMatch = streamRegex.exec(text)) !== null) {
+      const content = streamMatch[1];
+      while ((match = regex.exec(content)) !== null) {
+        const decoded = match[1]
+          .replace(/\\n/g, "\n")
+          .replace(/\\r/g, "\r")
+          .replace(/\\t/g, "\t")
+          .replace(/\\\\/g, "\\")
+          .replace(/\\([()])/g, "$1");
+        if (decoded.trim().length > 0) {
+          textParts.push(decoded);
+        }
+      }
+    }
+    
+    // Also try to get text from Tj and TJ operators
+    const tjRegex = /\(([^)]+)\)\s*Tj/g;
+    while ((match = tjRegex.exec(text)) !== null) {
+      const decoded = match[1].replace(/\\([()])/g, "$1");
+      if (decoded.trim().length > 0 && !textParts.includes(decoded)) {
+        textParts.push(decoded);
+      }
+    }
+    
+    if (textParts.length > 0) {
+      return `[Extracted from PDF: ${fileName}]\n\n${textParts.join(" ")}`;
+    }
+    
+    return `[PDF file: ${fileName} - Text extraction limited. The document may contain scanned images. Content was uploaded for reference.]`;
+  } catch {
+    return `[PDF file: ${fileName} - Could not extract text content.]`;
+  }
+}
+
+async function extractDocxText(buffer: ArrayBuffer, fileName: string): Promise<string> {
+  // DOCX is a ZIP containing XML files. Extract text from word/document.xml
+  try {
+    const bytes = new Uint8Array(buffer);
+    // Find PK zip entries and locate word/document.xml
+    // Simple approach: find XML text content patterns
+    const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+    
+    // Extract text between <w:t> tags (Word XML)
+    const wtRegex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+    const parts: string[] = [];
+    let match;
+    while ((match = wtRegex.exec(text)) !== null) {
+      if (match[1].trim()) parts.push(match[1]);
+    }
+    
+    if (parts.length > 0) {
+      return `[Extracted from DOCX: ${fileName}]\n\n${parts.join(" ")}`;
+    }
+    
+    // Fallback: extract any readable text
+    const readable = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    const cleaned = readable.replace(/[^\x20-\x7E\n]/g, "").trim();
+    if (cleaned.length > 50) {
+      return `[Extracted from DOCX: ${fileName}]\n\n${cleaned.slice(0, 15000)}`;
+    }
+    
+    return `[DOCX file: ${fileName} - Limited text extraction. Content uploaded for reference.]`;
+  } catch {
+    return `[DOCX file: ${fileName} - Could not extract text content.]`;
+  }
+}
+
 // ─── CHAT ──────────────────────────────────────────────
 function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: string; onPromptConsumed: () => void }) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -103,6 +213,7 @@ function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: strin
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [attachedFile, setAttachedFile] = useState<{ name: string; content: string } | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -122,25 +233,30 @@ function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: strin
     const file = e.target.files?.[0];
     if (!file) return;
     
-    const maxSize = 5 * 1024 * 1024; // 5MB
-    if (file.size > maxSize) { toast.error("File too large (max 5MB)"); return; }
+    const maxSize = 20 * 1024 * 1024; // 20MB
+    if (file.size > maxSize) { toast.error("File too large (max 20MB)"); return; }
 
-    const allowedTypes = ["text/plain", "application/pdf", "text/markdown", "text/csv"];
-    const allowedExts = [".txt", ".md", ".csv", ".text"];
+    const allowedExts = [".txt", ".md", ".csv", ".text", ".pdf", ".docx", ".doc", ".json", ".xml", ".html", ".py", ".js", ".ts"];
     const ext = "." + file.name.split(".").pop()?.toLowerCase();
 
-    if (allowedTypes.includes(file.type) || allowedExts.includes(ext)) {
-      try {
-        const text = await file.text();
-        setAttachedFile({ name: file.name, content: text.slice(0, 8000) }); // limit context
-        toast.success(`Attached: ${file.name}`);
-      } catch {
-        toast.error("Could not read file");
-      }
-    } else {
-      toast.error("Supported: .txt, .md, .csv files. For PDFs use Smart Workspace.");
+    if (!allowedExts.includes(ext)) {
+      toast.error("Supported: TXT, PDF, DOCX, MD, CSV, JSON, code files");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
     }
-    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    setIsExtracting(true);
+    try {
+      const text = await extractTextFromFile(file);
+      const truncated = text.slice(0, 15000);
+      setAttachedFile({ name: file.name, content: truncated });
+      toast.success(`Attached: ${file.name} (${Math.round(truncated.length / 1000)}KB text extracted)`);
+    } catch {
+      toast.error("Could not read file");
+    } finally {
+      setIsExtracting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const toggleListening = () => {
@@ -169,7 +285,6 @@ function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: strin
     let messageContent = text.trim();
     let attachment: Message["attachment"] | undefined;
 
-    // If file is attached, include its content in context
     if (attachedFile) {
       messageContent = `[Document: ${attachedFile.name}]\n\n${attachedFile.content}\n\n---\n\nUser question: ${text.trim()}`;
       attachment = { name: attachedFile.name, type: "document" };
@@ -241,7 +356,7 @@ function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: strin
               <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-3"><Sparkles className="w-6 h-6 text-primary" /></div>
               <h2 className="text-lg font-bold text-foreground">Hey! I'm SOFI</h2>
               <p className="text-sm text-muted-foreground mt-1">Your personal AI assistant for study & productivity</p>
-              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1 justify-center"><Upload className="w-3 h-3" /> Attach documents to ask about their content</p>
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1 justify-center"><Upload className="w-3 h-3" /> Attach PDF, DOCX, TXT files to ask about their content</p>
             </div>
             <div className="lg:hidden"><AdaptiveInsights onAskSofi={(p) => sendMessage(p)} /></div>
             <div>
@@ -282,20 +397,30 @@ function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: strin
       </div>
 
       {/* Attached file preview */}
-      {attachedFile && (
+      {(attachedFile || isExtracting) && (
         <div className="px-4 py-2 border-t border-border bg-muted/30">
           <div className="flex items-center gap-2 max-w-3xl mx-auto">
-            <FileText className="w-4 h-4 text-primary flex-shrink-0" />
-            <span className="text-xs text-foreground truncate flex-1">{attachedFile.name}</span>
-            <button onClick={() => setAttachedFile(null)} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-destructive"><X className="w-3 h-3" /></button>
+            {isExtracting ? (
+              <>
+                <Loader2 className="w-4 h-4 text-primary animate-spin flex-shrink-0" />
+                <span className="text-xs text-muted-foreground">Extracting text from file...</span>
+              </>
+            ) : attachedFile ? (
+              <>
+                <FileText className="w-4 h-4 text-primary flex-shrink-0" />
+                <span className="text-xs text-foreground truncate flex-1">{attachedFile.name}</span>
+                <span className="text-[10px] text-muted-foreground">{Math.round(attachedFile.content.length / 1000)}KB text</span>
+                <button onClick={() => setAttachedFile(null)} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-destructive"><X className="w-3 h-3" /></button>
+              </>
+            ) : null}
           </div>
         </div>
       )}
 
       <div className="p-4 border-t border-border flex-shrink-0">
         <div className="flex items-end gap-2 bg-card border border-border rounded-xl px-4 py-2 max-w-3xl mx-auto">
-          <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".txt,.md,.csv,.text" className="hidden" />
-          <button onClick={() => fileInputRef.current?.click()} className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-all" title="Attach document">
+          <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".txt,.md,.csv,.text,.pdf,.docx,.doc,.json,.xml,.html,.py,.js,.ts" className="hidden" />
+          <button onClick={() => fileInputRef.current?.click()} disabled={isExtracting} className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-all disabled:opacity-40" title="Attach PDF, DOCX, TXT, or code files">
             <Paperclip className="w-3.5 h-3.5" />
           </button>
           <button onClick={toggleListening} className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${isListening ? "bg-destructive text-destructive-foreground animate-pulse" : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"}`}>
@@ -318,40 +443,29 @@ function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: strin
 
 // ─── FOCUS ─────────────────────────────────────────────
 function FocusSection() {
-  const [duration, setDuration] = useState(25);
-  const [seconds, setSeconds] = useState(25 * 60);
-  const [running, setRunning] = useState(false);
-  const [sessionType, setSessionType] = useState<SessionType>("Study Session");
-  const [goal, setGoal] = useState("");
-  const intervalRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (running && seconds > 0) { intervalRef.current = window.setInterval(() => setSeconds((s) => s - 1), 1000); }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [running, seconds]);
-
-  useEffect(() => { if (seconds === 0) { setRunning(false); toast.success("Focus session complete! 🎉"); } }, [seconds]);
-
-  const handleDurationChange = (d: number) => { if (running) return; setDuration(d); setSeconds(d * 60); };
-  const mins = Math.floor(seconds / 60).toString().padStart(2, "0");
-  const secs = (seconds % 60).toString().padStart(2, "0");
-  const progress = ((duration * 60 - seconds) / (duration * 60)) * 100;
+  const timer = useFocusTimer();
+  const mins = Math.floor(timer.seconds / 60).toString().padStart(2, "0");
+  const secs = (timer.seconds % 60).toString().padStart(2, "0");
+  const progress = ((timer.duration * 60 - timer.seconds) / (timer.duration * 60)) * 100;
 
   return (
     <div className="flex-1 overflow-auto">
       <div className="max-w-lg mx-auto p-6 space-y-6">
-        <div className="text-center"><h2 className="text-lg font-bold text-foreground">Focus Zone</h2><p className="text-sm text-muted-foreground mt-0.5">Stay focused and productive</p></div>
-        <div className="space-y-2"><label className="text-xs font-medium text-muted-foreground">Session Type</label><div className="flex flex-wrap gap-1.5">{SESSION_TYPES.map((t) => (<button key={t} onClick={() => setSessionType(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${sessionType === t ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>{t}</button>))}</div></div>
-        <div className="space-y-2"><label className="text-xs font-medium text-muted-foreground">Session Goal (optional)</label><input value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="e.g. Complete chapter 5 revision" className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring" /></div>
-        <div className="flex justify-center gap-2">{DURATIONS.map((d) => (<button key={d} onClick={() => handleDurationChange(d)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${duration === d ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>{d} min</button>))}</div>
+        <div className="text-center"><h2 className="text-lg font-bold text-foreground">Focus Zone</h2><p className="text-sm text-muted-foreground mt-0.5">Timer persists even when you switch tabs</p></div>
+        <div className="space-y-2"><label className="text-xs font-medium text-muted-foreground">Session Type</label><div className="flex flex-wrap gap-1.5">{SESSION_TYPES.map((t) => (<button key={t} onClick={() => timer.setSessionType(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${timer.sessionType === t ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>{t}</button>))}</div></div>
+        <div className="space-y-2"><label className="text-xs font-medium text-muted-foreground">Session Goal (optional)</label><input value={timer.goal} onChange={(e) => timer.setGoal(e.target.value)} placeholder="e.g. Complete chapter 5 revision" className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring" /></div>
+        <div className="flex justify-center gap-2">{DURATIONS.map((d) => (<button key={d} onClick={() => timer.setDuration(d)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${timer.duration === d ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>{d} min</button>))}</div>
         <div className="relative w-48 h-48 mx-auto">
           <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" className="stroke-muted" strokeWidth="3" /><circle cx="50" cy="50" r="45" fill="none" className="stroke-primary transition-all duration-1000" strokeWidth="3" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 45}`} strokeDashoffset={`${2 * Math.PI * 45 * (1 - progress / 100)}`} /></svg>
           <div className="absolute inset-0 flex items-center justify-center"><span className="text-4xl font-light font-mono text-foreground tracking-tight">{mins}:{secs}</span></div>
         </div>
         <div className="flex items-center justify-center gap-3">
-          <button onClick={() => setRunning(!running)} className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:opacity-90 transition-opacity">{running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}</button>
-          <button onClick={() => { setRunning(false); setSeconds(duration * 60); }} className="w-10 h-10 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center hover:bg-secondary/80 transition-colors"><RotateCcw className="w-4 h-4" /></button>
+          <button onClick={() => timer.setRunning(!timer.running)} className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:opacity-90 transition-opacity">{timer.running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}</button>
+          <button onClick={timer.reset} className="w-10 h-10 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center hover:bg-secondary/80 transition-colors"><RotateCcw className="w-4 h-4" /></button>
         </div>
+        {timer.running && (
+          <p className="text-center text-xs text-primary/80">⏱️ Timer keeps running when you navigate away — look for the floating timer!</p>
+        )}
         <p className="text-center text-sm text-muted-foreground">Stay focused. You've got this. 💪</p>
       </div>
     </div>

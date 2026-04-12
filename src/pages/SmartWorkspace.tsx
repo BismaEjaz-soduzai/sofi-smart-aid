@@ -111,8 +111,8 @@ export default function SmartWorkspace() {
   const [activeRoomId, setActiveRoomId] = useState<string | undefined>(undefined);
   const activeRoom = rooms.find((r) => r.id === activeRoomId);
 
-  // Pass room filter: undefined = all files, specific ID = room files
-  const { files, isLoading, uploadFile, deleteFile, moveFile } = useStudyFiles(activeRoomId);
+  // Pass room filter: null = general (unassigned) files, specific ID = room files
+  const { files, isLoading, uploadFile, deleteFile, moveFile } = useStudyFiles(activeRoomId === undefined ? null : activeRoomId);
   const [tab, setTab] = useState<Tab>("uploads");
   const [search, setSearch] = useState("");
   const [dragOver, setDragOver] = useState(false);
