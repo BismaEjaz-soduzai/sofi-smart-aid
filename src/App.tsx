@@ -4,9 +4,11 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { FocusTimerProvider } from "@/contexts/FocusTimerContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "@/components/AppLayout";
 import { DeadlineNotifier } from "@/components/DeadlineNotifier";
+import FloatingFocusTimer from "@/components/FloatingFocusTimer";
 import Onboarding from "@/pages/Onboarding";
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
@@ -32,27 +34,30 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
-            <Route path="/" element={<Onboarding />} />
-            <Route path="/welcome" element={<Landing />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<SignUp />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-              <Route path="/dashboard" element={<><DeadlineNotifier /><Dashboard /></>} />
-              <Route path="/organizer" element={<Organizer />} />
-              <Route path="/tasks" element={<Navigate to="/organizer" replace />} />
-              <Route path="/notes" element={<Navigate to="/organizer" replace />} />
-              <Route path="/planner" element={<Planner />} />
-              <Route path="/workspace" element={<SmartWorkspace />} />
-              <Route path="/assistant" element={<SofiAssistant />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/chat" element={<ChatRooms />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <FocusTimerProvider>
+            <Routes>
+              <Route path="/" element={<Onboarding />} />
+              <Route path="/welcome" element={<Landing />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<SignUp />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+                <Route path="/dashboard" element={<><DeadlineNotifier /><Dashboard /></>} />
+                <Route path="/organizer" element={<Organizer />} />
+                <Route path="/tasks" element={<Navigate to="/organizer" replace />} />
+                <Route path="/notes" element={<Navigate to="/organizer" replace />} />
+                <Route path="/planner" element={<Planner />} />
+                <Route path="/workspace" element={<SmartWorkspace />} />
+                <Route path="/assistant" element={<SofiAssistant />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/chat" element={<ChatRooms />} />
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+            <FloatingFocusTimer />
+          </FocusTimerProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
