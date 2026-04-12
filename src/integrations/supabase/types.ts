@@ -337,6 +337,7 @@ export type Database = {
           file_size: number
           file_type: string
           id: string
+          room_id: string | null
           updated_at: string
           user_id: string
         }
@@ -347,6 +348,7 @@ export type Database = {
           file_size?: number
           file_type: string
           id?: string
+          room_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -357,10 +359,19 @@ export type Database = {
           file_size?: number
           file_type?: string
           id?: string
+          room_id?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "study_files_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "workspace_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       study_interactions: {
         Row: {
@@ -440,6 +451,36 @@ export type Database = {
           priority?: string
           reminder_enabled?: boolean
           title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      workspace_rooms: {
+        Row: {
+          color: string
+          created_at: string
+          emoji: string
+          id: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          emoji?: string
+          id?: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          emoji?: string
+          id?: string
+          name?: string
           updated_at?: string
           user_id?: string
         }

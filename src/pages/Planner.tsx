@@ -4,11 +4,12 @@ import {
   Plus, Sparkles, BookOpen, GraduationCap, Rocket, Briefcase,
   Presentation, Library, X, Calendar as CalendarIcon, Target, TrendingUp,
   CheckCircle2, Clock, MoreHorizontal, Trash2, ChevronRight,
-  Loader2, Send, LayoutList, CalendarDays,
+  Loader2, Send, LayoutList, CalendarDays, Edit3, Save, ArrowLeft,
+  AlertCircle, Bell,
 } from "lucide-react";
 import { usePlans, useCreatePlan, useDeletePlan, useUpdatePlan, usePlanSessions, useCreateSession, useToggleSession, type Plan, type PlanInsert } from "@/hooks/usePlans";
 import { useTasks } from "@/hooks/useTasks";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, parseISO, startOfWeek, endOfWeek } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, parseISO, startOfWeek, endOfWeek, differenceInDays, isPast, isToday, isTomorrow } from "date-fns";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 
@@ -24,12 +25,12 @@ const TEMPLATES = [
   { emoji: "📚", title: "7-Day Revision Sprint", goal: "Intensive revision period", category: "study", color: "teal", duration: "7 days" },
 ];
 
-const CATEGORY_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  study: { bg: "bg-primary/10", text: "text-primary", border: "border-primary/20" },
-  exam: { bg: "bg-info/10", text: "text-info", border: "border-info/20" },
-  assignment: { bg: "bg-success/10", text: "text-success", border: "border-success/20" },
-  project: { bg: "bg-warning/10", text: "text-warning", border: "border-warning/20" },
-  personal: { bg: "bg-destructive/10", text: "text-destructive", border: "border-destructive/20" },
+const CATEGORY_STYLES: Record<string, { bg: string; text: string; border: string; gradient: string }> = {
+  study: { bg: "bg-primary/10", text: "text-primary", border: "border-primary/20", gradient: "from-primary/20 to-primary/5" },
+  exam: { bg: "bg-info/10", text: "text-info", border: "border-info/20", gradient: "from-info/20 to-info/5" },
+  assignment: { bg: "bg-success/10", text: "text-success", border: "border-success/20", gradient: "from-success/20 to-success/5" },
+  project: { bg: "bg-warning/10", text: "text-warning", border: "border-warning/20", gradient: "from-warning/20 to-warning/5" },
+  personal: { bg: "bg-destructive/10", text: "text-destructive", border: "border-destructive/20", gradient: "from-destructive/20 to-destructive/5" },
 };
 
 const COLOR_OPTIONS = [
@@ -133,7 +134,7 @@ export default function Planner() {
   const resetForm = () => setForm({ title: "", goal: "", category: "study", emoji: "📘", color_tag: "blue", start_date: null, end_date: null, duration: "", description: "", source_type: "manual" });
 
   if (view === "plan-detail" && selectedPlan) {
-    return <PlanDetail plan={selectedPlan} onBack={() => { setView("overview"); setSelectedPlan(null); }} onDelete={async () => { await deletePlan.mutateAsync(selectedPlan.id); setView("overview"); setSelectedPlan(null); toast.success("Plan deleted"); }} onStatusChange={async (status) => { await updatePlan.mutateAsync({ id: selectedPlan.id, status }); setSelectedPlan({ ...selectedPlan, status }); }} />;
+    return <PlanDetail plan={selectedPlan} onBack={() => { setView("overview"); setSelectedPlan(null); }} onDelete={async () => { await deletePlan.mutateAsync(selectedPlan.id); setView("overview"); setSelectedPlan(null); toast.success("Plan deleted"); }} onUpdate={async (updates) => { await updatePlan.mutateAsync({ id: selectedPlan.id, ...updates }); setSelectedPlan({ ...selectedPlan, ...updates }); }} />;
   }
 
   return (
@@ -253,13 +254,12 @@ export default function Planner() {
                     <div className="mt-3 bg-muted/30 border border-border rounded-xl p-4 max-h-60 overflow-auto">
                       <div className="prose prose-sm dark:prose-invert max-w-none"><ReactMarkdown>{aiOutput}</ReactMarkdown></div>
                       <div className="flex gap-2 mt-3">
-                        <button onClick={() => { setForm({ ...form, description: aiOutput, source_type: "ai" }); setAiOutput(""); toast.success("AI content added to description"); }} className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity">Use as Description</button>
+                        <button onClick={() => { setForm({ ...form, description: aiOutput, source_type: "ai" }); setAiOutput(""); toast.success("AI content added"); }} className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity">Use as Description</button>
                         <button onClick={saveAiPlan} disabled={createPlan.isPending} className="px-3 py-1.5 rounded-lg bg-info/10 text-info text-xs font-medium hover:bg-info/20 transition-colors">Save as Separate Plan</button>
                       </div>
                     </div>
                   )}
                 </div>
-
                 <button onClick={handleCreate} disabled={!form.title.trim() || createPlan.isPending} className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity">{createPlan.isPending ? "Creating..." : "Create Plan"}</button>
               </motion.div>
             )}
@@ -291,24 +291,19 @@ function CalendarView({ plans, tasks }: { plans: Plan[]; tasks: any[] }) {
   const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: calStart, end: calEnd });
 
-  // Build event map
   const eventMap = useMemo(() => {
     const map = new Map<string, { type: string; title: string; color: string }[]>();
     const addEvent = (dateStr: string, ev: { type: string; title: string; color: string }) => {
-      const key = dateStr;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(ev);
+      if (!map.has(dateStr)) map.set(dateStr, []);
+      map.get(dateStr)!.push(ev);
     };
-
     plans.forEach((p) => {
       if (p.start_date) addEvent(p.start_date, { type: "plan-start", title: `📅 ${p.title} starts`, color: "bg-primary" });
       if (p.end_date) addEvent(p.end_date, { type: "plan-end", title: `🏁 ${p.title} ends`, color: "bg-info" });
     });
-
     tasks.forEach((t: any) => {
       if (t.due_date) addEvent(t.due_date, { type: "task", title: `✅ ${t.title}`, color: t.completed ? "bg-success" : "bg-warning" });
     });
-
     return map;
   }, [plans, tasks]);
 
@@ -317,38 +312,27 @@ function CalendarView({ plans, tasks }: { plans: Plan[]; tasks: any[] }) {
 
   return (
     <div className="p-4 lg:p-6 max-w-4xl mx-auto space-y-4">
-      {/* Month navigation */}
       <div className="flex items-center justify-between">
         <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-sm hover:text-foreground transition-colors">← Prev</button>
         <h2 className="text-lg font-bold text-foreground">{format(currentMonth, "MMMM yyyy")}</h2>
         <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-sm hover:text-foreground transition-colors">Next →</button>
       </div>
-
-      {/* Day headers */}
       <div className="grid grid-cols-7 gap-1">
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
           <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">{d}</div>
         ))}
       </div>
-
-      {/* Calendar grid */}
       <div className="grid grid-cols-7 gap-1">
         {days.map((day) => {
           const dateKey = format(day, "yyyy-MM-dd");
           const events = eventMap.get(dateKey) || [];
           const isCurrentMonth = isSameMonth(day, currentMonth);
-          const isToday = isSameDay(day, today);
+          const isToday_ = isSameDay(day, today);
           const isSelected = selectedDate && isSameDay(day, selectedDate);
-
           return (
-            <button
-              key={dateKey}
-              onClick={() => setSelectedDate(day)}
-              className={`relative min-h-[70px] p-1.5 rounded-lg border text-left transition-all ${
-                isSelected ? "border-primary bg-primary/5" : isToday ? "border-primary/40 bg-primary/5" : "border-border hover:border-primary/20"
-              } ${!isCurrentMonth ? "opacity-40" : ""}`}
-            >
-              <span className={`text-xs font-medium ${isToday ? "text-primary font-bold" : "text-foreground"}`}>{format(day, "d")}</span>
+            <button key={dateKey} onClick={() => setSelectedDate(day)}
+              className={`relative min-h-[70px] p-1.5 rounded-lg border text-left transition-all ${isSelected ? "border-primary bg-primary/5" : isToday_ ? "border-primary/40 bg-primary/5" : "border-border hover:border-primary/20"} ${!isCurrentMonth ? "opacity-40" : ""}`}>
+              <span className={`text-xs font-medium ${isToday_ ? "text-primary font-bold" : "text-foreground"}`}>{format(day, "d")}</span>
               <div className="mt-1 space-y-0.5">
                 {events.slice(0, 2).map((ev, i) => (
                   <div key={i} className={`${ev.color} rounded-sm px-1 py-0.5 text-[9px] text-white truncate leading-tight`}>{ev.title}</div>
@@ -359,8 +343,6 @@ function CalendarView({ plans, tasks }: { plans: Plan[]; tasks: any[] }) {
           );
         })}
       </div>
-
-      {/* Selected date details */}
       {selectedDate && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-4 space-y-3">
           <h3 className="text-sm font-semibold text-foreground">{format(selectedDate, "EEEE, MMMM d, yyyy")}</h3>
@@ -385,34 +367,61 @@ function CalendarView({ plans, tasks }: { plans: Plan[]; tasks: any[] }) {
 // ─── Plan Card ──────────────────────────────
 function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
   const style = CATEGORY_STYLES[plan.category] || CATEGORY_STYLES.study;
+  const daysLeft = plan.end_date ? differenceInDays(parseISO(plan.end_date), new Date()) : null;
+  const isOverdue = daysLeft !== null && daysLeft < 0 && plan.status === "active";
+  const isDueSoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 3 && plan.status === "active";
+
   return (
-    <motion.div whileHover={{ y: -2 }} onClick={onClick} className={`glass-card-hover p-4 cursor-pointer border ${style.border} space-y-3`}>
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2.5"><span className="text-xl">{plan.emoji}</span><div><h3 className="text-sm font-semibold text-foreground">{plan.title}</h3><p className="text-[11px] text-muted-foreground">{plan.goal}</p></div></div>
-        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text} capitalize`}>{plan.category}</span>
+    <motion.div whileHover={{ y: -2 }} onClick={onClick} className={`glass-card-hover p-4 cursor-pointer border ${isOverdue ? "border-destructive/40" : style.border} space-y-3 relative overflow-hidden`}>
+      {/* Gradient accent */}
+      <div className={`absolute inset-0 bg-gradient-to-br ${style.gradient} opacity-30 pointer-events-none`} />
+      <div className="relative">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2.5"><span className="text-xl">{plan.emoji}</span><div><h3 className="text-sm font-semibold text-foreground">{plan.title}</h3><p className="text-[11px] text-muted-foreground line-clamp-1">{plan.goal}</p></div></div>
+          <div className="flex flex-col items-end gap-1">
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text} capitalize`}>{plan.category}</span>
+            {isOverdue && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-destructive/10 text-destructive flex items-center gap-0.5"><AlertCircle className="w-2.5 h-2.5" /> Overdue</span>}
+            {isDueSoon && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-warning/10 text-warning flex items-center gap-0.5"><Bell className="w-2.5 h-2.5" /> {daysLeft}d left</span>}
+          </div>
+        </div>
+        <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-2">
+          {plan.duration && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{plan.duration}</span>}
+          {plan.start_date && <span className="flex items-center gap-1"><CalendarIcon className="w-3 h-3" />{format(parseISO(plan.start_date), "MMM d")}</span>}
+          {plan.end_date && <span>→ {format(parseISO(plan.end_date), "MMM d")}</span>}
+          <span className="flex items-center gap-1 ml-auto"><ChevronRight className="w-3 h-3" /></span>
+        </div>
+        {plan.progress > 0 && (<div className="h-1.5 bg-muted rounded-full overflow-hidden mt-2"><div className="h-full bg-primary rounded-full transition-all" style={{ width: `${Math.min(plan.progress, 100)}%` }} /></div>)}
       </div>
-      <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-        {plan.duration && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{plan.duration}</span>}
-        {plan.start_date && <span className="flex items-center gap-1"><CalendarIcon className="w-3 h-3" />{format(new Date(plan.start_date), "MMM d")}</span>}
-        <span className="flex items-center gap-1 ml-auto"><ChevronRight className="w-3 h-3" /></span>
-      </div>
-      {plan.progress > 0 && (<div className="h-1.5 bg-muted rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full transition-all" style={{ width: `${Math.min(plan.progress, 100)}%` }} /></div>)}
     </motion.div>
   );
 }
 
-// ─── Plan Detail ────────────────────────────
-function PlanDetail({ plan, onBack, onDelete, onStatusChange }: { plan: Plan; onBack: () => void; onDelete: () => void; onStatusChange: (s: string) => void }) {
+// ─── Plan Detail (Professional Redesign) ────────────────────────────
+function PlanDetail({ plan, onBack, onDelete, onUpdate }: { plan: Plan; onBack: () => void; onDelete: () => void; onUpdate: (updates: Partial<Plan>) => Promise<void> }) {
   const { data: sessions = [] } = usePlanSessions(plan.id);
   const createSession = useCreateSession();
   const toggleSession = useToggleSession();
   const [showAdd, setShowAdd] = useState(false);
   const [sessionForm, setSessionForm] = useState({ title: "", date: "", note: "" });
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: plan.title, goal: plan.goal || "", description: plan.description || "",
+    start_date: plan.start_date || "", end_date: plan.end_date || "", duration: plan.duration || "",
+    category: plan.category, emoji: plan.emoji || "📘",
+  });
   const style = CATEGORY_STYLES[plan.category] || CATEGORY_STYLES.study;
 
   const completed = sessions.filter((s) => s.is_completed).length;
   const total = sessions.length;
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+  const daysLeft = plan.end_date ? differenceInDays(parseISO(plan.end_date), new Date()) : null;
+  const totalDays = plan.start_date && plan.end_date ? differenceInDays(parseISO(plan.end_date), parseISO(plan.start_date)) : null;
+  const elapsedDays = plan.start_date ? Math.max(0, differenceInDays(new Date(), parseISO(plan.start_date))) : null;
+  const timeProgress = totalDays && totalDays > 0 ? Math.min(100, Math.round(((elapsedDays || 0) / totalDays) * 100)) : 0;
+
+  const isOverdue = daysLeft !== null && daysLeft < 0 && plan.status === "active";
+  const isDueSoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 3 && plan.status === "active";
 
   const addSession = async () => {
     if (!sessionForm.title.trim()) return;
@@ -420,35 +429,189 @@ function PlanDetail({ plan, onBack, onDelete, onStatusChange }: { plan: Plan; on
     setSessionForm({ title: "", date: "", note: "" }); setShowAdd(false); toast.success("Session added");
   };
 
+  const saveEdits = async () => {
+    await onUpdate({
+      title: editForm.title, goal: editForm.goal, description: editForm.description,
+      start_date: editForm.start_date || null, end_date: editForm.end_date || null,
+      duration: editForm.duration, category: editForm.category, emoji: editForm.emoji,
+    });
+    setEditing(false);
+    toast.success("Plan updated");
+  };
+
   return (
-    <div className="p-4 lg:p-6 max-w-3xl mx-auto space-y-5">
-      <button onClick={onBack} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">← Back to Planner</button>
-      <div className={`glass-card p-5 border ${style.border} space-y-3`}>
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3"><span className="text-3xl">{plan.emoji}</span><div><h1 className="text-lg font-bold text-foreground">{plan.title}</h1><p className="text-sm text-muted-foreground">{plan.goal}</p></div></div>
-          <div className="flex gap-2">
-            {plan.status === "active" && <button onClick={() => onStatusChange("completed")} className="px-3 py-1.5 rounded-lg bg-success/10 text-success text-xs font-medium hover:bg-success/20">Mark Complete</button>}
-            {plan.status === "completed" && <button onClick={() => onStatusChange("active")} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20">Reactivate</button>}
-            <button onClick={onDelete} className="px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20"><Trash2 className="w-3.5 h-3.5" /></button>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col h-[calc(100vh-3.5rem)]">
+      {/* Header bar */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/60 backdrop-blur-sm">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Back
+        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setEditing(!editing)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs font-medium hover:text-foreground transition-colors">
+            <Edit3 className="w-3.5 h-3.5" /> {editing ? "Cancel" : "Edit"}
+          </button>
+          {plan.status === "active" && <button onClick={() => onUpdate({ status: "completed" })} className="px-3 py-1.5 rounded-lg bg-success/10 text-success text-xs font-medium hover:bg-success/20">✓ Complete</button>}
+          {plan.status === "completed" && <button onClick={() => onUpdate({ status: "active" })} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20">Reactivate</button>}
+          <button onClick={onDelete} className="px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20"><Trash2 className="w-3.5 h-3.5" /></button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto">
+        <div className="p-4 lg:p-6 max-w-3xl mx-auto space-y-5">
+          {/* Hero card */}
+          <div className={`relative rounded-2xl border ${isOverdue ? "border-destructive/40" : style.border} overflow-hidden`}>
+            <div className={`absolute inset-0 bg-gradient-to-br ${style.gradient} opacity-40`} />
+            <div className="relative p-6 space-y-4">
+              {editing ? (
+                <div className="space-y-3">
+                  <div className="flex gap-3 items-start">
+                    <div className="flex flex-wrap gap-1 max-w-[120px]">
+                      {EMOJI_OPTIONS.map((e) => <button key={e} onClick={() => setEditForm({ ...editForm, emoji: e })} className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${editForm.emoji === e ? "bg-primary/20 ring-1 ring-primary" : "bg-muted/60"}`}>{e}</button>)}
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="w-full bg-background/60 border border-border rounded-lg px-3 py-2 text-lg font-bold text-foreground outline-none focus:ring-1 focus:ring-ring" />
+                      <input value={editForm.goal} onChange={(e) => setEditForm({ ...editForm, goal: e.target.value })} placeholder="Goal" className="w-full bg-background/60 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <input type="date" value={editForm.start_date} onChange={(e) => setEditForm({ ...editForm, start_date: e.target.value })} className="bg-background/60 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none" />
+                    <input type="date" value={editForm.end_date} onChange={(e) => setEditForm({ ...editForm, end_date: e.target.value })} className="bg-background/60 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none" />
+                    <input value={editForm.duration} onChange={(e) => setEditForm({ ...editForm, duration: e.target.value })} placeholder="Duration" className="bg-background/60 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none" />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.keys(CATEGORY_STYLES).map((c) => <button key={c} onClick={() => setEditForm({ ...editForm, category: c })} className={`px-3 py-1 rounded-lg text-xs font-medium capitalize ${editForm.category === c ? "bg-primary text-primary-foreground" : "bg-muted/60 text-muted-foreground"}`}>{c}</button>)}
+                  </div>
+                  <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={4} placeholder="Description / AI Plan content..." className="w-full bg-background/60 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none resize-none" />
+                  <button onClick={saveEdits} className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 flex items-center justify-center gap-1.5"><Save className="w-4 h-4" /> Save Changes</button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-4">
+                      <span className="text-4xl">{plan.emoji}</span>
+                      <div>
+                        <h1 className="text-xl font-bold text-foreground">{plan.title}</h1>
+                        <p className="text-sm text-muted-foreground mt-0.5">{plan.goal}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5">
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${style.bg} ${style.text} capitalize`}>{plan.category}</span>
+                      {isOverdue && <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-destructive/10 text-destructive flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Overdue by {Math.abs(daysLeft!)}d</span>}
+                      {isDueSoon && <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-warning/10 text-warning flex items-center gap-1"><Bell className="w-3 h-3" /> {daysLeft} days left</span>}
+                    </div>
+                  </div>
+
+                  {/* Timeline + Progress */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-background/40 rounded-xl p-3 space-y-2">
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Timeline</p>
+                      <div className="flex items-center gap-2 text-sm">
+                        <CalendarIcon className="w-4 h-4 text-primary" />
+                        <span className="text-foreground font-medium">
+                          {plan.start_date ? format(parseISO(plan.start_date), "MMM d, yyyy") : "No start"}
+                          {" → "}
+                          {plan.end_date ? format(parseISO(plan.end_date), "MMM d, yyyy") : "No end"}
+                        </span>
+                      </div>
+                      {plan.duration && <p className="text-xs text-muted-foreground">⏱️ Duration: {plan.duration}</p>}
+                      {totalDays !== null && totalDays > 0 && (
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[10px] text-muted-foreground"><span>Time elapsed</span><span>{timeProgress}%</span></div>
+                          <div className="h-1.5 bg-muted rounded-full"><div className="h-full bg-info/60 rounded-full transition-all" style={{ width: `${timeProgress}%` }} /></div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="bg-background/40 rounded-xl p-3 space-y-2">
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Progress</p>
+                      <div className="flex items-center gap-3">
+                        <div className="relative w-14 h-14">
+                          <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
+                            <circle cx="28" cy="28" r="24" fill="none" stroke="currentColor" className="text-muted" strokeWidth="4" />
+                            <circle cx="28" cy="28" r="24" fill="none" stroke="currentColor" className="text-primary" strokeWidth="4" strokeDasharray={`${pct * 1.508} 151`} strokeLinecap="round" />
+                          </svg>
+                          <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-foreground">{pct}%</span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-foreground">{completed}/{total}</p>
+                          <p className="text-[10px] text-muted-foreground">sessions done</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Description / AI Plan */}
+          {plan.description && !editing && (
+            <div className="glass-card p-5">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-3">
+                {plan.source_type === "ai" ? "🧠 AI-Generated Plan" : "📝 Description"}
+              </p>
+              <div className="prose prose-sm dark:prose-invert max-w-none"><ReactMarkdown>{plan.description}</ReactMarkdown></div>
+            </div>
+          )}
+
+          {/* Sessions */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Sessions / Milestones</p>
+              <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"><Plus className="w-3 h-3" /> Add</button>
+            </div>
+            <AnimatePresence>
+              {showAdd && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-3">
+                  <div className="glass-card p-4 space-y-3">
+                    <input value={sessionForm.title} onChange={(e) => setSessionForm({ ...sessionForm, title: e.target.value })} placeholder="Session title" className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none" />
+                    <div className="flex gap-2">
+                      <input type="date" value={sessionForm.date} onChange={(e) => setSessionForm({ ...sessionForm, date: e.target.value })} className="flex-1 bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none" />
+                      <button onClick={addSession} disabled={!sessionForm.title.trim()} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-40">Add</button>
+                      <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-lg bg-muted text-muted-foreground text-sm font-medium">Cancel</button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="space-y-2">
+              {sessions.map((s, idx) => {
+                const sessionDate = s.date ? parseISO(s.date) : null;
+                const sessionOverdue = sessionDate && isPast(sessionDate) && !isToday(sessionDate) && !s.is_completed;
+                const sessionToday = sessionDate && isToday(sessionDate);
+                const sessionTomorrow = sessionDate && isTomorrow(sessionDate);
+
+                return (
+                  <motion.div key={s.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.03 }}
+                    className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${s.is_completed ? "bg-muted/20 border-border" : sessionOverdue ? "bg-destructive/5 border-destructive/20" : sessionToday ? "bg-primary/5 border-primary/20" : "bg-card border-border hover:border-primary/20"}`}>
+                    <button onClick={() => toggleSession.mutate({ id: s.id, is_completed: !s.is_completed, plan_id: plan.id })}
+                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${s.is_completed ? "bg-primary border-primary" : "border-muted-foreground/30 hover:border-primary"}`}>
+                      {s.is_completed && <CheckCircle2 className="w-3.5 h-3.5 text-primary-foreground" />}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${s.is_completed ? "text-muted-foreground line-through" : "text-foreground"}`}>{s.title}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {s.date && <span className="text-[10px] text-muted-foreground">{format(parseISO(s.date), "MMM d, yyyy")}</span>}
+                        {sessionOverdue && <span className="text-[10px] font-semibold text-destructive">Overdue</span>}
+                        {sessionToday && <span className="text-[10px] font-semibold text-primary">Today</span>}
+                        {sessionTomorrow && <span className="text-[10px] font-semibold text-warning">Tomorrow</span>}
+                      </div>
+                    </div>
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${s.is_completed ? "bg-success" : sessionOverdue ? "bg-destructive" : sessionToday ? "bg-primary" : "bg-muted-foreground/20"}`} />
+                  </motion.div>
+                );
+              })}
+              {sessions.length === 0 && (
+                <div className="text-center py-10 bg-muted/20 rounded-xl border border-dashed border-border">
+                  <Target className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No sessions yet</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Add milestones to track your progress</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <span className={`px-2 py-0.5 rounded-full ${style.bg} ${style.text} font-semibold capitalize`}>{plan.category}</span>
-          {plan.duration && <span>⏱️ {plan.duration}</span>}
-          {plan.start_date && <span>📅 {format(new Date(plan.start_date), "MMM d, yyyy")}</span>}
-          {plan.end_date && <span>→ {format(new Date(plan.end_date), "MMM d, yyyy")}</span>}
-        </div>
-        {total > 0 && (<div className="space-y-1"><div className="flex justify-between text-xs"><span className="text-muted-foreground">Progress</span><span className="font-medium text-foreground">{completed}/{total} sessions</span></div><div className="h-2 bg-muted rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${pct}%` }} /></div></div>)}
       </div>
-      {plan.description && (<div className="glass-card p-4"><p className="text-xs font-medium text-muted-foreground mb-2">Description / AI Plan</p><div className="prose prose-sm dark:prose-invert max-w-none"><ReactMarkdown>{plan.description}</ReactMarkdown></div></div>)}
-      <div>
-        <div className="flex items-center justify-between mb-3"><p className="text-xs font-medium text-muted-foreground">Sessions / Milestones</p><button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"><Plus className="w-3 h-3" /> Add Session</button></div>
-        {showAdd && (<motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="glass-card p-4 mb-3 space-y-3"><input value={sessionForm.title} onChange={(e) => setSessionForm({ ...sessionForm, title: e.target.value })} placeholder="Session title" className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none" /><div className="flex gap-2"><input type="date" value={sessionForm.date} onChange={(e) => setSessionForm({ ...sessionForm, date: e.target.value })} className="flex-1 bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none" /><button onClick={addSession} disabled={!sessionForm.title.trim()} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-40">Add</button><button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-lg bg-muted text-muted-foreground text-sm font-medium">Cancel</button></div></motion.div>)}
-        <div className="space-y-2">
-          {sessions.map((s) => (<div key={s.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${s.is_completed ? "bg-muted/30 border-border" : "bg-card border-border hover:border-primary/20"}`}><button onClick={() => toggleSession.mutate({ id: s.id, is_completed: !s.is_completed, plan_id: plan.id })} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${s.is_completed ? "bg-primary border-primary" : "border-muted-foreground/40 hover:border-primary"}`}>{s.is_completed && <CheckCircle2 className="w-3 h-3 text-primary-foreground" />}</button><div className="flex-1 min-w-0"><p className={`text-sm font-medium ${s.is_completed ? "text-muted-foreground line-through" : "text-foreground"}`}>{s.title}</p>{s.date && <p className="text-[10px] text-muted-foreground">{format(new Date(s.date), "MMM d, yyyy")}</p>}</div></div>))}
-          {sessions.length === 0 && (<div className="text-center py-8 text-sm text-muted-foreground">No sessions yet. Add milestones to track your progress.</div>)}
-        </div>
-      </div>
-    </div>
+    </motion.div>
   );
 }
