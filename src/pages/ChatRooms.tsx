@@ -282,7 +282,7 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
 
   const handleStartCall = (video: boolean) => {
     const memberIds = members.map((m) => m.user_id);
-    webrtc.startCall(memberIds, video);
+    webrtc.startCall(memberIds, video, memberMap);
     toast.info(video ? "Starting video call..." : "Starting voice call...");
   };
 
