@@ -20,6 +20,7 @@ import { useWebRTC } from "@/hooks/useWebRTC";
 import { usePresence } from "@/hooks/usePresence";
 import { useReactions } from "@/hooks/useReactions";
 import VideoCallOverlay from "@/components/chat/VideoCallOverlay";
+import IncomingCallOverlay from "@/components/chat/IncomingCallOverlay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -281,13 +282,21 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
 
   const handleStartCall = (video: boolean) => {
     const memberIds = members.map((m) => m.user_id);
-    webrtc.startCall(memberIds, video);
+    webrtc.startCall(memberIds, video, memberMap);
     toast.info(video ? "Starting video call..." : "Starting voice call...");
   };
 
   return (
     <>
-      {webrtc.callState !== "idle" && (
+      {webrtc.incomingCall && webrtc.callState === "ringing" && (
+        <IncomingCallOverlay
+          call={webrtc.incomingCall}
+          onAccept={webrtc.acceptCall}
+          onReject={webrtc.rejectCall}
+        />
+      )}
+
+      {webrtc.callState !== "idle" && webrtc.callState !== "ringing" && (
         <VideoCallOverlay
           localStream={webrtc.localStream}
           screenStream={webrtc.screenStream}
@@ -296,6 +305,7 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
           isVideoEnabled={webrtc.isVideoEnabled}
           isScreenSharing={webrtc.isScreenSharing}
           memberNames={memberMap}
+          callDuration={webrtc.callDuration}
           onToggleAudio={webrtc.toggleAudio}
           onToggleVideo={webrtc.toggleVideo}
           onStartScreenShare={webrtc.startScreenShare}
