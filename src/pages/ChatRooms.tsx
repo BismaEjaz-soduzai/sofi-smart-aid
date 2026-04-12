@@ -288,7 +288,15 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
 
   return (
     <>
-      {webrtc.callState !== "idle" && (
+      {webrtc.incomingCall && webrtc.callState === "ringing" && (
+        <IncomingCallOverlay
+          call={webrtc.incomingCall}
+          onAccept={webrtc.acceptCall}
+          onReject={webrtc.rejectCall}
+        />
+      )}
+
+      {webrtc.callState !== "idle" && webrtc.callState !== "ringing" && (
         <VideoCallOverlay
           localStream={webrtc.localStream}
           screenStream={webrtc.screenStream}
@@ -297,6 +305,7 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
           isVideoEnabled={webrtc.isVideoEnabled}
           isScreenSharing={webrtc.isScreenSharing}
           memberNames={memberMap}
+          callDuration={webrtc.callDuration}
           onToggleAudio={webrtc.toggleAudio}
           onToggleVideo={webrtc.toggleVideo}
           onStartScreenShare={webrtc.startScreenShare}
