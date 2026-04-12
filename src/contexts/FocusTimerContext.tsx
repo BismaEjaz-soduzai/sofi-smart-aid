@@ -1,0 +1,63 @@
+import { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from "react";
+import { toast } from "sonner";
+
+interface FocusTimerState {
+  duration: number;
+  seconds: number;
+  running: boolean;
+  sessionType: string;
+  goal: string;
+  setDuration: (d: number) => void;
+  setRunning: (r: boolean) => void;
+  setSessionType: (t: string) => void;
+  setGoal: (g: string) => void;
+  reset: () => void;
+}
+
+const FocusTimerContext = createContext<FocusTimerState | null>(null);
+
+export function useFocusTimer() {
+  const ctx = useContext(FocusTimerContext);
+  if (!ctx) throw new Error("useFocusTimer must be used within FocusTimerProvider");
+  return ctx;
+}
+
+export function FocusTimerProvider({ children }: { children: ReactNode }) {
+  const [duration, setDurationState] = useState(25);
+  const [seconds, setSeconds] = useState(25 * 60);
+  const [running, setRunning] = useState(false);
+  const [sessionType, setSessionType] = useState("Study Session");
+  const [goal, setGoal] = useState("");
+  const intervalRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (running && seconds > 0) {
+      intervalRef.current = window.setInterval(() => setSeconds((s) => s - 1), 1000);
+    }
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [running]);
+
+  useEffect(() => {
+    if (seconds === 0 && running) {
+      setRunning(false);
+      toast.success("Focus session complete! 🎉");
+    }
+  }, [seconds, running]);
+
+  const setDuration = useCallback((d: number) => {
+    if (running) return;
+    setDurationState(d);
+    setSeconds(d * 60);
+  }, [running]);
+
+  const reset = useCallback(() => {
+    setRunning(false);
+    setSeconds(duration * 60);
+  }, [duration]);
+
+  return (
+    <FocusTimerContext.Provider value={{ duration, seconds, running, sessionType, goal, setDuration, setRunning, setSessionType, setGoal, reset }}>
+      {children}
+    </FocusTimerContext.Provider>
+  );
+}
