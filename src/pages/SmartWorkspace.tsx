@@ -487,6 +487,48 @@ export default function SmartWorkspace() {
           )}
         </div>
       )}
+
+      {/* In-App File Viewer Modal */}
+      <AnimatePresence>
+        {viewingFile && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+              <div className="flex items-center gap-3 min-w-0">
+                <FileText className="w-5 h-5 text-primary flex-shrink-0" />
+                <h3 className="text-sm font-semibold text-foreground truncate">{viewingFile.name}</h3>
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{viewingFile.type}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <a href={viewingFile.url} download={viewingFile.name} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
+                  <Download className="w-3.5 h-3.5" /> Download
+                </a>
+                <a href={viewingFile.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
+                  <Eye className="w-3.5 h-3.5" /> New Tab
+                </a>
+                <button onClick={() => setViewingFile(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              {["PDF", "TXT"].includes(viewingFile.type) || viewingFile.name.endsWith(".pdf") || viewingFile.name.endsWith(".txt") ? (
+                <iframe src={viewingFile.url} className="w-full h-full border-0" title={viewingFile.name} />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full gap-4">
+                  <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center">
+                    <FileText className="w-8 h-8 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm text-foreground font-medium">Preview not available for {viewingFile.type} files</p>
+                  <p className="text-xs text-muted-foreground">Download the file or open in a new tab to view</p>
+                  <a href={viewingFile.url} download={viewingFile.name} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity">
+                    <Download className="w-4 h-4 inline mr-1.5" /> Download File
+                  </a>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
