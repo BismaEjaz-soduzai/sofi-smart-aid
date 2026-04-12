@@ -166,10 +166,12 @@ export default function SmartWorkspace() {
     e.target.value = "";
   };
 
+  const [viewingFile, setViewingFile] = useState<{ url: string; name: string; type: string } | null>(null);
+
   const handleOpenFile = async (file: StudyFile) => {
     const url = await getSignedUrl(file);
     if (url) {
-      window.open(url, "_blank");
+      setViewingFile({ url, name: file.file_name, type: file.file_type });
     } else {
       toast.error("Could not open file. Try downloading instead.");
     }
