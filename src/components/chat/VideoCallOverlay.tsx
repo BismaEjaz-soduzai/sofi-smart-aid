@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Mic, MicOff, Video, VideoOff, PhoneOff,
-  Monitor, MonitorOff, Minimize2, Maximize2, GripHorizontal
+  Monitor, MonitorOff, Minimize2, Maximize2, GripHorizontal, Clock
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -13,11 +13,18 @@ interface VideoCallOverlayProps {
   isVideoEnabled: boolean;
   isScreenSharing: boolean;
   memberNames: Map<string, string>;
+  callDuration: number;
   onToggleAudio: () => void;
   onToggleVideo: () => void;
   onStartScreenShare: () => void;
   onStopScreenShare: () => void;
   onEndCall: () => void;
+}
+
+function formatDuration(seconds: number) {
+  const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+  const s = (seconds % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
 }
 
 function VideoTile({ stream, label, muted = false }: { stream: MediaStream; label: string; muted?: boolean }) {
@@ -70,6 +77,7 @@ function useDraggable(initialPos: { x: number; y: number }) {
 export default function VideoCallOverlay({
   localStream, screenStream, remoteStreams,
   isAudioEnabled, isVideoEnabled, isScreenSharing, memberNames,
+  callDuration,
   onToggleAudio, onToggleVideo, onStartScreenShare, onStopScreenShare, onEndCall,
 }: VideoCallOverlayProps) {
   const [minimized, setMinimized] = useState(false);
@@ -91,12 +99,12 @@ export default function VideoCallOverlay({
         onPointerUp={onPointerUp}
         className="fixed z-50 w-72 rounded-2xl overflow-hidden shadow-2xl border border-border bg-background/95 backdrop-blur-xl select-none"
       >
-        {/* Drag handle */}
         <div
           onPointerDown={onPointerDown}
-          className="flex items-center justify-center gap-1 py-1.5 bg-muted/60 cursor-grab active:cursor-grabbing"
+          className="flex items-center justify-between gap-1 py-1.5 px-3 bg-muted/60 cursor-grab active:cursor-grabbing"
         >
           <GripHorizontal className="w-4 h-4 text-muted-foreground" />
+          <span className="text-[10px] font-mono text-muted-foreground">{formatDuration(callDuration)}</span>
         </div>
         <div className="relative">
           {displayStream ? (
@@ -132,6 +140,18 @@ export default function VideoCallOverlay({
 
   return (
     <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-xl flex flex-col">
+      {/* Call info bar */}
+      <div className="flex items-center justify-center gap-3 py-2 border-b border-border bg-card/40">
+        <span className="text-[10px] font-medium bg-destructive/90 text-destructive-foreground px-2 py-0.5 rounded-full animate-pulse">● LIVE</span>
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Clock className="w-3.5 h-3.5" />
+          <span className="font-mono">{formatDuration(callDuration)}</span>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {remoteEntries.length + 1} participant{remoteEntries.length !== 0 ? "s" : ""}
+        </span>
+      </div>
+
       <div className="flex-1 p-4 overflow-auto">
         <div className={`grid ${gridCols} gap-3 max-w-5xl mx-auto h-full`}>
           {displayStream && <VideoTile stream={displayStream} label={isScreenSharing ? "Your Screen" : "You"} muted />}
@@ -140,7 +160,10 @@ export default function VideoCallOverlay({
           ))}
           {remoteEntries.length === 0 && (
             <div className="flex items-center justify-center bg-muted rounded-xl aspect-video">
-              <p className="text-sm text-muted-foreground">Waiting for others to join...</p>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">Waiting for others to join...</p>
+                <p className="text-xs text-muted-foreground/60 mt-1">Share the invite code so others can join the call</p>
+              </div>
             </div>
           )}
         </div>
