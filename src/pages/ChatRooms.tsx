@@ -20,6 +20,7 @@ import { useWebRTC } from "@/hooks/useWebRTC";
 import { usePresence } from "@/hooks/usePresence";
 import { useReactions } from "@/hooks/useReactions";
 import VideoCallOverlay from "@/components/chat/VideoCallOverlay";
+import IncomingCallOverlay from "@/components/chat/IncomingCallOverlay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
