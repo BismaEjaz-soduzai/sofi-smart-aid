@@ -235,11 +235,36 @@ export default function Planner() {
                   </div>
                   <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Description (optional)</label><textarea value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} placeholder="Add any notes..." className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none resize-none focus:ring-1 focus:ring-ring" /></div>
                 </div>
+                {/* AI Generate inline */}
+                <div className="border-t border-border pt-4 mt-2">
+                  <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5"><Sparkles className="w-3 h-3 text-info" /> Generate with AI</p>
+                  <div className="flex gap-2">
+                    <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="e.g. Create a 2-week revision plan for Database Systems" className="flex-1 bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring" onKeyDown={(e) => { if (e.key === "Enter") handleAiGenerate(); }} />
+                    <button onClick={handleAiGenerate} disabled={!aiPrompt.trim() || aiLoading} className="px-3 py-2 rounded-lg bg-info/10 text-info text-xs font-medium hover:bg-info/20 disabled:opacity-40 transition-colors flex items-center gap-1.5">
+                      {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Generate
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {SUGGESTED_AI_PROMPTS.slice(0, 3).map((p) => (
+                      <button key={p} onClick={() => { setAiPrompt(p); }} className="px-2 py-1 rounded-lg text-[10px] font-medium bg-muted/60 text-muted-foreground hover:bg-info/10 hover:text-info transition-colors truncate max-w-[200px]">{p}</button>
+                    ))}
+                  </div>
+                  {aiOutput && (
+                    <div className="mt-3 bg-muted/30 border border-border rounded-xl p-4 max-h-60 overflow-auto">
+                      <div className="prose prose-sm dark:prose-invert max-w-none"><ReactMarkdown>{aiOutput}</ReactMarkdown></div>
+                      <div className="flex gap-2 mt-3">
+                        <button onClick={() => { setForm({ ...form, description: aiOutput, source_type: "ai" }); setAiOutput(""); toast.success("AI content added to description"); }} className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity">Use as Description</button>
+                        <button onClick={saveAiPlan} disabled={createPlan.isPending} className="px-3 py-1.5 rounded-lg bg-info/10 text-info text-xs font-medium hover:bg-info/20 transition-colors">Save as Separate Plan</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <button onClick={handleCreate} disabled={!form.title.trim() || createPlan.isPending} className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity">{createPlan.isPending ? "Creating..." : "Create Plan"}</button>
               </motion.div>
             )}
 
-            {/* AI Generate */}
+            {/* AI Generate (standalone) */}
             {view === "ai-generate" && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 max-w-3xl mx-auto">
                 <div className="flex items-center justify-between"><div><h2 className="text-base font-bold text-foreground flex items-center gap-2"><Sparkles className="w-4 h-4 text-info" /> AI Plan Generator</h2><p className="text-xs text-muted-foreground mt-0.5">Describe what you need, and SOFI will create a plan</p></div><button onClick={() => { setView("overview"); setAiOutput(""); setAiPrompt(""); }} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button></div>
