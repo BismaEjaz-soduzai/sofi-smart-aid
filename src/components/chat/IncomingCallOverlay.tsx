@@ -1,7 +1,9 @@
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { Phone, PhoneOff, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { playRingtone, showBrowserNotification } from "@/lib/notificationSounds";
 import type { IncomingCall } from "@/hooks/useWebRTC";
 
 interface IncomingCallOverlayProps {
@@ -11,6 +13,17 @@ interface IncomingCallOverlayProps {
 }
 
 export default function IncomingCallOverlay({ call, onAccept, onReject }: IncomingCallOverlayProps) {
+  // Play ringtone loop + browser notification
+  useEffect(() => {
+    const stopRingtone = playRingtone();
+    showBrowserNotification(
+      `${call.fromName} is calling`,
+      `Incoming ${call.isVideo ? "video" : "voice"} call`,
+      "incoming-call"
+    );
+    return stopRingtone;
+  }, [call]);
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
@@ -19,7 +32,6 @@ export default function IncomingCallOverlay({ call, onAccept, onReject }: Incomi
       className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 backdrop-blur-xl"
     >
       <div className="flex flex-col items-center gap-6 p-8">
-        {/* Pulsing ring */}
         <div className="relative">
           <motion.div
             animate={{ scale: [1, 1.3, 1], opacity: [0.5, 0, 0.5] }}
@@ -52,27 +64,14 @@ export default function IncomingCallOverlay({ call, onAccept, onReject }: Incomi
 
         <div className="flex items-center gap-8 mt-4">
           <div className="flex flex-col items-center gap-2">
-            <Button
-              variant="destructive"
-              size="icon"
-              className="h-16 w-16 rounded-full shadow-lg"
-              onClick={onReject}
-            >
+            <Button variant="destructive" size="icon" className="h-16 w-16 rounded-full shadow-lg" onClick={onReject}>
               <PhoneOff className="w-6 h-6" />
             </Button>
             <span className="text-xs text-muted-foreground">Decline</span>
           </div>
-
           <div className="flex flex-col items-center gap-2">
-            <motion.div
-              animate={{ scale: [1, 1.05, 1] }}
-              transition={{ repeat: Infinity, duration: 1 }}
-            >
-              <Button
-                size="icon"
-                className="h-16 w-16 rounded-full bg-success hover:bg-success/90 text-success-foreground shadow-lg"
-                onClick={onAccept}
-              >
+            <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ repeat: Infinity, duration: 1 }}>
+              <Button size="icon" className="h-16 w-16 rounded-full bg-success hover:bg-success/90 text-success-foreground shadow-lg" onClick={onAccept}>
                 <Phone className="w-6 h-6" />
               </Button>
             </motion.div>
