@@ -230,8 +230,25 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
 
   const messageMap = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
 
+  const prevMsgCount = useRef(messages.length);
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Play sound for new messages from others
+    if (messages.length > prevMsgCount.current) {
+      const latest = messages[messages.length - 1];
+      if (latest && latest.user_id !== userId) {
+        playMessageSound();
+        if (document.hidden) {
+          const sender = memberMap.get(latest.user_id) || "Someone";
+          showBrowserNotification(
+            `New message from ${sender}`,
+            latest.message_type === "file" ? `📎 ${latest.file_name}` : latest.content.slice(0, 80),
+            `msg-${latest.id}`
+          );
+        }
+      }
+    }
+    prevMsgCount.current = messages.length;
   }, [messages]);
 
   useEffect(() => {
