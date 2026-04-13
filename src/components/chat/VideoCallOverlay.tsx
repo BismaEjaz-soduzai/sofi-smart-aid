@@ -30,7 +30,28 @@ function formatDuration(seconds: number) {
 function VideoTile({ stream, label, muted = false }: { stream: MediaStream; label: string; muted?: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   useEffect(() => {
-    if (videoRef.current && stream) videoRef.current.srcObject = stream;
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+      // Ensure playback starts
+      videoRef.current.play().catch(() => {});
+    }
+  }, [stream]);
+
+  // Re-attach when tracks change
+  useEffect(() => {
+    if (!stream) return;
+    const handleTrack = () => {
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
+    };
+    stream.addEventListener("addtrack", handleTrack);
+    stream.addEventListener("removetrack", handleTrack);
+    return () => {
+      stream.removeEventListener("addtrack", handleTrack);
+      stream.removeEventListener("removetrack", handleTrack);
+    };
   }, [stream]);
 
   return (

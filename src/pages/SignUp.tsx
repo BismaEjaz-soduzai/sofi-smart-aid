@@ -40,8 +40,8 @@ export default function SignUp() {
     if (error) {
       toast.error(error);
     } else {
-      toast.success("Check your email to confirm your account!");
-      navigate("/login");
+      toast.success("Account created successfully!");
+      navigate("/dashboard");
     }
   };
 
