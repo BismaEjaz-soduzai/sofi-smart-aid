@@ -28,7 +28,7 @@ export default function PageShell({ title, description, icon: Icon, children }: 
       {children || (
         <div className="glass-card p-12 text-center space-y-3">
           <Icon className="w-12 h-12 text-muted-foreground/30 mx-auto" />
-          <p className="text-muted-foreground text-sm">This module is coming soon. Connect Lovable Cloud to enable full functionality.</p>
+          <p className="text-muted-foreground text-sm">This module is coming soon.</p>
         </div>
       )}
     </motion.div>
