@@ -85,6 +85,57 @@ async function fetchFileContent(file: StudyFile): Promise<string | null> {
   try {
     const { data, error } = await supabase.storage.from("study-files").download(file.file_path);
     if (error || !data) return null;
+    const ext = file.file_name.split(".").pop()?.toLowerCase() || "";
+    
+    // Plain text formats - read directly
+    if (["txt", "md", "csv", "text", "json", "xml", "html", "css", "js", "ts", "py"].includes(ext)) {
+      const text = await data.text();
+      if (text && text.length > 10) return text;
+    }
+    
+    // PDF - extract text from binary
+    if (ext === "pdf") {
+      const buffer = await data.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      const raw = new TextDecoder("latin1").decode(bytes);
+      const textParts: string[] = [];
+      const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+      const parenRegex = /\(([^)]*)\)/g;
+      let sm;
+      while ((sm = streamRegex.exec(raw)) !== null) {
+        let pm;
+        while ((pm = parenRegex.exec(sm[1])) !== null) {
+          const d = pm[1].replace(/\\n/g, "\n").replace(/\\r/g, "").replace(/\\t/g, "\t").replace(/\\\\/g, "\\").replace(/\\([()])/g, "$1").trim();
+          if (d.length > 0) textParts.push(d);
+        }
+      }
+      const tjRegex = /\(([^)]+)\)\s*Tj/g;
+      let tm;
+      while ((tm = tjRegex.exec(raw)) !== null) {
+        const d = tm[1].replace(/\\([()])/g, "$1").trim();
+        if (d.length > 0 && !textParts.includes(d)) textParts.push(d);
+      }
+      if (textParts.length > 0) return `[Extracted from PDF: ${file.file_name}]\n\n${textParts.join(" ")}`;
+      return `[PDF: ${file.file_name} — text extraction limited, may contain scanned images]`;
+    }
+    
+    // DOCX - extract text from XML inside ZIP
+    if (ext === "docx" || ext === "doc") {
+      const buffer = await data.arrayBuffer();
+      const raw = new TextDecoder("utf-8", { fatal: false }).decode(new Uint8Array(buffer));
+      const wtRegex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+      const parts: string[] = [];
+      let wm;
+      while ((wm = wtRegex.exec(raw)) !== null) {
+        if (wm[1].trim()) parts.push(wm[1]);
+      }
+      if (parts.length > 0) return `[Extracted from DOCX: ${file.file_name}]\n\n${parts.join(" ")}`;
+      const fallback = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").replace(/[^\x20-\x7E\n]/g, "").trim();
+      if (fallback.length > 50) return `[Extracted from DOCX: ${file.file_name}]\n\n${fallback.slice(0, 15000)}`;
+      return `[DOCX: ${file.file_name} — limited extraction]`;
+    }
+    
+    // Fallback
     const text = await data.text();
     if (text && text.length > 20 && !text.includes("\u0000")) return text;
     return `[Binary file: ${file.file_name} (${file.file_type}, ${formatSize(file.file_size)}). Content cannot be extracted client-side.]`;
