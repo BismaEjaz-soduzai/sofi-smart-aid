@@ -33,6 +33,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { playMessageSound, showBrowserNotification } from "@/lib/notificationSounds";
+import { supabase } from "@/integrations/supabase/client";
 
 const EMOJI_LIST = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "💯"];
 
@@ -298,10 +299,19 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
     toast.success(`Invite code copied: ${room.invite_code}`);
   };
 
-  const handleStartCall = (video: boolean) => {
+  const handleStartCall = async (video: boolean) => {
     const memberIds = members.map((m) => m.user_id);
     webrtc.startCall(memberIds, video, memberMap);
     toast.info(video ? "Starting video call..." : "Starting voice call...");
+    // Log call event as a system message in chat
+    try {
+      const myName = memberMap.get(userId) || "Someone";
+      await sendMessage.mutateAsync({
+        roomId: room.id,
+        content: video ? `📹 ${myName} started a video call` : `📞 ${myName} started a voice call`,
+        messageType: "system",
+      });
+    } catch {}
   };
 
   return (

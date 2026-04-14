@@ -119,7 +119,10 @@ export function useWebRTC(roomId?: string) {
   const createPeerConnection = useCallback((peerId: string, stream: MediaStream) => {
     // Close existing connection first
     const existing = peerConnections.current.get(peerId);
-    if (existing) { existing.close(); peerConnections.current.delete(peerId); }
+    if (existing) {
+      try { existing.close(); } catch {}
+      peerConnections.current.delete(peerId);
+    }
 
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceCandidatePoolSize: 10 });
 
@@ -133,10 +136,20 @@ export function useWebRTC(roomId?: string) {
     };
 
     pc.ontrack = (event) => {
-      const remoteStream = event.streams[0] || new MediaStream([event.track]);
       setRemoteStreams((prev) => {
         const next = new Map(prev);
-        next.set(peerId, remoteStream);
+        const existing = next.get(peerId);
+        if (existing) {
+          // Add new track to existing stream if not already there
+          const trackIds = existing.getTracks().map(t => t.id);
+          if (!trackIds.includes(event.track.id)) {
+            existing.addTrack(event.track);
+          }
+          next.set(peerId, existing);
+        } else {
+          const remoteStream = event.streams[0] || new MediaStream([event.track]);
+          next.set(peerId, remoteStream);
+        }
         return next;
       });
     };
@@ -200,11 +213,10 @@ export function useWebRTC(roomId?: string) {
 
         if (type === "call-invite") {
           // Ignore if we're already in a call or already got this invite
-          if (currentState !== "idle") {
+          if (currentState !== "idle" && currentState !== "ringing") {
             console.log("Ignoring call-invite, current state:", currentState);
             return;
           }
-          const inviteKey = `${from}-${Date.now()}`;
           // Deduplicate: if we already have an incoming call from this person, ignore
           if (processedInvites.current.has(from)) return;
           processedInvites.current.add(from);
