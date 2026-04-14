@@ -54,12 +54,54 @@ export function useWebRTC(roomId?: string) {
   const screenStreamRef = useRef<MediaStream | null>(null);
   const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const callStateRef = useRef<CallState>("idle");
+  const channelStatusRef = useRef<"idle" | "subscribing" | "subscribed">("idle");
+  const channelReadyResolvers = useRef<Array<(ready: boolean) => void>>([]);
   // Track which invites we've already seen to prevent duplicates
   const processedInvites = useRef<Set<string>>(new Set());
 
   useEffect(() => { localStreamRef.current = localStream; }, [localStream]);
   useEffect(() => { screenStreamRef.current = screenStream; }, [screenStream]);
   useEffect(() => { callStateRef.current = callState; }, [callState]);
+
+  const resolveChannelWaiters = useCallback((ready: boolean) => {
+    const waiters = [...channelReadyResolvers.current];
+    channelReadyResolvers.current = [];
+    waiters.forEach((resolve) => resolve(ready));
+  }, []);
+
+  const waitForChannelReady = useCallback(async () => {
+    if (channelStatusRef.current === "subscribed") return true;
+
+    return await new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => resolve(channelStatusRef.current === "subscribed"), 4000);
+      channelReadyResolvers.current.push((ready) => {
+        clearTimeout(timeout);
+        resolve(ready);
+      });
+    });
+  }, []);
+
+  const sendSignal = useCallback(async (peerId: string, type: string, data: unknown) => {
+    if (!user?.id) return false;
+
+    const ready = await waitForChannelReady();
+    if (!ready || !channelRef.current) {
+      console.warn(`WebRTC channel not ready for ${type}`);
+      return false;
+    }
+
+    try {
+      await channelRef.current.send({
+        type: "broadcast",
+        event: "webrtc-signal",
+        payload: { from: user.id, to: peerId, type, data },
+      });
+      return true;
+    } catch (error) {
+      console.error(`Failed to send ${type} signal`, error);
+      return false;
+    }
+  }, [user, waitForChannelReady]);
 
   // Call duration timer
   useEffect(() => {
@@ -81,10 +123,7 @@ export function useWebRTC(roomId?: string) {
 
   const endCall = useCallback(() => {
     peerConnections.current.forEach((_, peerId) => {
-      channelRef.current?.send({
-        type: "broadcast", event: "webrtc-signal",
-        payload: { from: user?.id, to: peerId, type: "call-end", data: null },
-      });
+      void sendSignal(peerId, "call-end", null);
     });
     peerConnections.current.forEach((pc) => pc.close());
     peerConnections.current.clear();
@@ -100,19 +139,16 @@ export function useWebRTC(roomId?: string) {
     setCallState("idle");
     setIsScreenSharing(false);
     setIncomingCall(null);
-  }, [user]);
+  }, [sendSignal]);
 
   const rejectCall = useCallback(() => {
     if (incomingCall) {
-      channelRef.current?.send({
-        type: "broadcast", event: "webrtc-signal",
-        payload: { from: user?.id, to: incomingCall.from, type: "call-rejected", data: null },
-      });
+      void sendSignal(incomingCall.from, "call-rejected", null);
     }
     processedInvites.current.clear();
     setIncomingCall(null);
     setCallState("idle");
-  }, [user, incomingCall]);
+  }, [incomingCall, sendSignal]);
 
   useEffect(() => { return () => { endCall(); }; }, []);
 
@@ -128,10 +164,7 @@ export function useWebRTC(roomId?: string) {
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        channelRef.current?.send({
-          type: "broadcast", event: "webrtc-signal",
-          payload: { from: user!.id, to: peerId, type: "ice-candidate", data: event.candidate.toJSON() },
-        });
+        void sendSignal(peerId, "ice-candidate", event.candidate.toJSON());
       }
     };
 
@@ -163,10 +196,7 @@ export function useWebRTC(roomId?: string) {
         pc.restartIce();
         pc.createOffer({ iceRestart: true }).then((offer) => {
           pc.setLocalDescription(offer);
-          channelRef.current?.send({
-            type: "broadcast", event: "webrtc-signal",
-            payload: { from: user!.id, to: peerId, type: "offer", data: offer },
-          });
+          void sendSignal(peerId, "offer", offer);
         }).catch(() => removePeer(peerId));
       }
       if (state === "disconnected") {
@@ -195,11 +225,13 @@ export function useWebRTC(roomId?: string) {
     }
 
     return pc;
-  }, [user, removePeer, endCall]);
+  }, [removePeer, endCall, sendSignal]);
 
   // Signaling channel
   useEffect(() => {
     if (!roomId || !user) return;
+
+    channelStatusRef.current = "subscribing";
 
     const channel = supabase.channel(`webrtc-${roomId}`, {
       config: { broadcast: { self: false } },
@@ -243,10 +275,7 @@ export function useWebRTC(roomId?: string) {
           await pc.setRemoteDescription(new RTCSessionDescription(data));
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
-          channelRef.current?.send({
-            type: "broadcast", event: "webrtc-signal",
-            payload: { from: user.id, to: from, type: "answer", data: answer },
-          });
+          await sendSignal(from, "answer", answer);
           setCallState("connected");
         } else if (type === "answer") {
           const pc = peerConnections.current.get(from);
@@ -269,10 +298,7 @@ export function useWebRTC(roomId?: string) {
           const pc = createPeerConnection(from, stream);
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
-          channelRef.current?.send({
-            type: "broadcast", event: "webrtc-signal",
-            payload: { from: user.id, to: from, type: "offer", data: offer },
-          });
+          await sendSignal(from, "offer", offer);
         } else if (type === "call-rejected") {
           setCallState("idle");
           processedInvites.current.clear();
@@ -284,11 +310,24 @@ export function useWebRTC(roomId?: string) {
       })
       .subscribe((status) => {
         console.log("WebRTC channel status:", status);
+        if (status === "SUBSCRIBED") {
+          channelStatusRef.current = "subscribed";
+          resolveChannelWaiters(true);
+        }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          channelStatusRef.current = "idle";
+          resolveChannelWaiters(false);
+        }
       });
 
     channelRef.current = channel;
-    return () => { supabase.removeChannel(channel); channelRef.current = null; };
-  }, [roomId, user, createPeerConnection, removePeer, endCall]);
+    return () => {
+      channelStatusRef.current = "idle";
+      resolveChannelWaiters(false);
+      supabase.removeChannel(channel);
+      channelRef.current = null;
+    };
+  }, [roomId, user, createPeerConnection, removePeer, endCall, sendSignal, resolveChannelWaiters]);
 
   const acceptCall = useCallback(async () => {
     if (!incomingCall) return;
@@ -308,19 +347,23 @@ export function useWebRTC(roomId?: string) {
       setIncomingCall(null);
 
       // Tell caller we accepted so they send the offer
-      channelRef.current?.send({
-        type: "broadcast", event: "webrtc-signal",
-        payload: { from: user!.id, to: callFrom, type: "call-accepted", data: null },
-      });
+      const accepted = await sendSignal(callFrom, "call-accepted", null);
+      if (!accepted) throw new Error("Could not reach caller");
       setCallState("calling");
     } catch (err) {
       console.error("Failed to accept call:", err);
       rejectCall();
     }
-  }, [user, incomingCall, rejectCall]);
+  }, [incomingCall, rejectCall, sendSignal]);
 
   const startCall = useCallback(async (memberIds: string[], videoEnabled = true, memberNames?: Map<string, string>) => {
     try {
+      const otherMembers = memberIds.filter((memberId) => memberId !== user?.id);
+      if (otherMembers.length === 0) return;
+
+      const ready = await waitForChannelReady();
+      if (!ready) throw new Error("Call signaling is not ready yet");
+
       let stream: MediaStream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: videoEnabled });
@@ -338,21 +381,20 @@ export function useWebRTC(roomId?: string) {
 
       const myName = memberNames?.get(user?.id || "") || "Someone";
 
-      for (const memberId of memberIds) {
-        if (memberId === user?.id) continue;
-        channelRef.current?.send({
-          type: "broadcast", event: "webrtc-signal",
-          payload: {
-            from: user!.id, to: memberId, type: "call-invite",
-            data: { isVideo: videoEnabled, fromName: myName },
-          },
-        });
+      for (const memberId of otherMembers) {
+        await sendSignal(memberId, "call-invite", { isVideo: videoEnabled, fromName: myName });
+
+        window.setTimeout(() => {
+          if (callStateRef.current === "calling" && !peerConnections.current.has(memberId)) {
+            void sendSignal(memberId, "call-invite", { isVideo: videoEnabled, fromName: myName });
+          }
+        }, 1200);
       }
     } catch (err) {
       console.error("Failed to start call:", err);
       setCallState("idle");
     }
-  }, [user]);
+  }, [user, sendSignal, waitForChannelReady]);
 
   const toggleAudio = useCallback(() => {
     if (localStreamRef.current) {

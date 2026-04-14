@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { extractText } from "https://esm.sh/unpdf@1.0.4";
+import JSZip from "npm:jszip@3.10.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,6 +12,14 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Missing authorization header" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { filePath, fileName } = await req.json();
     if (!filePath || !fileName) {
       return new Response(JSON.stringify({ error: "filePath and fileName are required" }), {
@@ -18,8 +28,38 @@ serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const authClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const {
+      data: { user },
+      error: authError,
+    } = await authClient.auth.getUser();
+
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabase = createClient(supabaseUrl, serviceKey);
+
+    const { data: fileRecord, error: fileRecordError } = await supabase
+      .from("study_files")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("file_path", filePath)
+      .maybeSingle();
+
+    if (fileRecordError || !fileRecord) {
+      return new Response(JSON.stringify({ error: "File not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Download file from storage
     const { data: fileData, error: downloadError } = await supabase.storage
@@ -39,10 +79,13 @@ serve(async (req) => {
       extractedText = await fileData.text();
     } else if (ext === "pdf") {
       const buffer = await fileData.arrayBuffer();
-      extractedText = extractPdfText(new Uint8Array(buffer), fileName);
-    } else if (ext === "docx" || ext === "doc") {
+      extractedText = await extractPdfText(buffer, fileName);
+    } else if (ext === "docx") {
       const buffer = await fileData.arrayBuffer();
-      extractedText = extractDocxText(new Uint8Array(buffer), fileName);
+      extractedText = await extractDocxText(buffer, fileName);
+    } else if (ext === "pptx") {
+      const buffer = await fileData.arrayBuffer();
+      extractedText = await extractPptxText(buffer, fileName);
     } else {
       try {
         const text = await fileData.text();
@@ -56,9 +99,10 @@ serve(async (req) => {
       }
     }
 
-    // Truncate to ~15k chars
-    if (extractedText.length > 15000) {
-      extractedText = extractedText.slice(0, 15000) + "\n\n[... text truncated at 15,000 characters]";
+    extractedText = normalizeText(extractedText);
+
+    if (extractedText.length > 40000) {
+      extractedText = extractedText.slice(0, 40000) + "\n\n[... text truncated at 40,000 characters]";
     }
 
     return new Response(JSON.stringify({ text: extractedText }), {
@@ -72,36 +116,34 @@ serve(async (req) => {
   }
 });
 
-function extractPdfText(bytes: Uint8Array, fileName: string): string {
+function decodeXml(value: string) {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function normalizeText(value: string) {
+  return value
+    .replace(/\r/g, "")
+    .replace(/\t/g, " ")
+    .replace(/[ ]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function extractPdfText(buffer: ArrayBuffer, fileName: string): Promise<string> {
   try {
-    const text = new TextDecoder("latin1").decode(bytes);
-    const textParts: string[] = [];
-    const regex = /\(([^)]*)\)/g;
-    let match;
-
-    const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
-    let streamMatch;
-    while ((streamMatch = streamRegex.exec(text)) !== null) {
-      const content = streamMatch[1];
-      while ((match = regex.exec(content)) !== null) {
-        const decoded = match[1]
-          .replace(/\\n/g, "\n")
-          .replace(/\\r/g, "\r")
-          .replace(/\\t/g, "\t")
-          .replace(/\\\\/g, "\\")
-          .replace(/\\([()])/g, "$1");
-        if (decoded.trim().length > 0) textParts.push(decoded);
-      }
+    if (buffer.byteLength > 15 * 1024 * 1024) {
+      return `[PDF file: ${fileName} - File is too large to preview reliably.]`;
     }
 
-    const tjRegex = /\(([^)]+)\)\s*Tj/g;
-    while ((match = tjRegex.exec(text)) !== null) {
-      const decoded = match[1].replace(/\\([()])/g, "$1");
-      if (decoded.trim().length > 0 && !textParts.includes(decoded)) textParts.push(decoded);
-    }
-
-    if (textParts.length > 0) {
-      return `[Extracted from PDF: ${fileName}]\n\n${textParts.join(" ")}`;
+    const { text } = await extractText(new Uint8Array(buffer), { mergePages: true });
+    const cleaned = normalizeText(text || "");
+    if (cleaned.length > 0) {
+      return `[Extracted from PDF: ${fileName}]\n\n${cleaned}`;
     }
     return `[PDF file: ${fileName} - Text extraction limited. The document may contain scanned images.]`;
   } catch {
@@ -109,25 +151,54 @@ function extractPdfText(bytes: Uint8Array, fileName: string): string {
   }
 }
 
-function extractDocxText(bytes: Uint8Array, fileName: string): string {
+async function extractDocxText(buffer: ArrayBuffer, fileName: string): Promise<string> {
   try {
-    const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-    const wtRegex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
-    const parts: string[] = [];
-    let match;
-    while ((match = wtRegex.exec(text)) !== null) {
-      if (match[1].trim()) parts.push(match[1]);
-    }
+    const zip = await JSZip.loadAsync(buffer);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    if (!documentXml) return `[DOCX file: ${fileName} - Document structure not found.]`;
+
+    const parts = [...documentXml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)]
+      .map((match) => decodeXml(match[1]))
+      .filter((part) => part.trim().length > 0);
+
     if (parts.length > 0) {
-      return `[Extracted from DOCX: ${fileName}]\n\n${parts.join(" ")}`;
+      return `[Extracted from DOCX: ${fileName}]\n\n${normalizeText(parts.join(" "))}`;
     }
-    const readable = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    const cleaned = readable.replace(/[^\x20-\x7E\n]/g, "").trim();
-    if (cleaned.length > 50) {
-      return `[Extracted from DOCX: ${fileName}]\n\n${cleaned.slice(0, 15000)}`;
-    }
+
     return `[DOCX file: ${fileName} - Limited text extraction.]`;
   } catch {
     return `[DOCX file: ${fileName} - Could not extract text content.]`;
+  }
+}
+
+async function extractPptxText(buffer: ArrayBuffer, fileName: string): Promise<string> {
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const slideNames = Object.keys(zip.files)
+      .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+      .sort((a, b) => Number(a.match(/slide(\d+)\.xml/)?.[1] || 0) - Number(b.match(/slide(\d+)\.xml/)?.[1] || 0));
+
+    const slides: string[] = [];
+
+    for (const slideName of slideNames) {
+      const xml = await zip.file(slideName)?.async("string");
+      if (!xml) continue;
+
+      const textParts = [...xml.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)]
+        .map((match) => decodeXml(match[1]))
+        .filter((part) => part.trim().length > 0);
+
+      if (textParts.length > 0) {
+        slides.push(textParts.join(" "));
+      }
+    }
+
+    if (slides.length > 0) {
+      return `[Extracted from PPTX: ${fileName}]\n\n${normalizeText(slides.map((slide, index) => `Slide ${index + 1}: ${slide}`).join("\n\n"))}`;
+    }
+
+    return `[PPTX file: ${fileName} - No readable slide text was found.]`;
+  } catch {
+    return `[PPTX file: ${fileName} - Could not extract slide text.]`;
   }
 }
