@@ -75,6 +75,13 @@ interface GeneratedItem {
   createdAt: string;
 }
 
+interface ViewingFile {
+  url: string | null;
+  name: string;
+  type: string;
+  previewText: string | null;
+}
+
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -83,63 +90,23 @@ function formatSize(bytes: number) {
 
 async function fetchFileContent(file: StudyFile): Promise<string | null> {
   try {
-    const { data, error } = await supabase.storage.from("study-files").download(file.file_path);
-    if (error || !data) return null;
-    const ext = file.file_name.split(".").pop()?.toLowerCase() || "";
-    
-    // Plain text formats - read directly
-    if (["txt", "md", "csv", "text", "json", "xml", "html", "css", "js", "ts", "py"].includes(ext)) {
-      const text = await data.text();
-      if (text && text.length > 10) return text;
+    const { data, error } = await supabase.functions.invoke("extract-file-text", {
+      body: {
+        filePath: file.file_path,
+        fileName: file.file_name,
+      },
+    });
+
+    if (error) {
+      console.error("extract-file-text error", error);
+      return null;
     }
-    
-    // PDF - extract text from binary
-    if (ext === "pdf") {
-      const buffer = await data.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      const raw = new TextDecoder("latin1").decode(bytes);
-      const textParts: string[] = [];
-      const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
-      const parenRegex = /\(([^)]*)\)/g;
-      let sm;
-      while ((sm = streamRegex.exec(raw)) !== null) {
-        let pm;
-        while ((pm = parenRegex.exec(sm[1])) !== null) {
-          const d = pm[1].replace(/\\n/g, "\n").replace(/\\r/g, "").replace(/\\t/g, "\t").replace(/\\\\/g, "\\").replace(/\\([()])/g, "$1").trim();
-          if (d.length > 0) textParts.push(d);
-        }
-      }
-      const tjRegex = /\(([^)]+)\)\s*Tj/g;
-      let tm;
-      while ((tm = tjRegex.exec(raw)) !== null) {
-        const d = tm[1].replace(/\\([()])/g, "$1").trim();
-        if (d.length > 0 && !textParts.includes(d)) textParts.push(d);
-      }
-      if (textParts.length > 0) return `[Extracted from PDF: ${file.file_name}]\n\n${textParts.join(" ")}`;
-      return `[PDF: ${file.file_name} — text extraction limited, may contain scanned images]`;
-    }
-    
-    // DOCX - extract text from XML inside ZIP
-    if (ext === "docx" || ext === "doc") {
-      const buffer = await data.arrayBuffer();
-      const raw = new TextDecoder("utf-8", { fatal: false }).decode(new Uint8Array(buffer));
-      const wtRegex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
-      const parts: string[] = [];
-      let wm;
-      while ((wm = wtRegex.exec(raw)) !== null) {
-        if (wm[1].trim()) parts.push(wm[1]);
-      }
-      if (parts.length > 0) return `[Extracted from DOCX: ${file.file_name}]\n\n${parts.join(" ")}`;
-      const fallback = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").replace(/[^\x20-\x7E\n]/g, "").trim();
-      if (fallback.length > 50) return `[Extracted from DOCX: ${file.file_name}]\n\n${fallback.slice(0, 15000)}`;
-      return `[DOCX: ${file.file_name} — limited extraction]`;
-    }
-    
-    // Fallback
-    const text = await data.text();
-    if (text && text.length > 20 && !text.includes("\u0000")) return text;
-    return `[Binary file: ${file.file_name} (${file.file_type}, ${formatSize(file.file_size)}). Content cannot be extracted client-side.]`;
-  } catch { return null; }
+
+    return typeof data?.text === "string" && data.text.trim().length > 0 ? data.text : null;
+  } catch (error) {
+    console.error("Failed to fetch file content", error);
+    return null;
+  }
 }
 
 async function readLocalFile(file: File): Promise<string> {
@@ -202,12 +169,32 @@ export default function SmartWorkspace() {
     e.target.value = "";
   };
 
-  const [viewingFile, setViewingFile] = useState<{ url: string; name: string; type: string } | null>(null);
+  const [viewingFile, setViewingFile] = useState<ViewingFile | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
   const handleOpenFile = async (file: StudyFile) => {
-    const url = await getSignedUrl(file);
-    if (url) setViewingFile({ url, name: file.file_name, type: file.file_type });
-    else toast.error("Could not open file");
+    setIsPreviewLoading(true);
+
+    try {
+      const [url, previewText] = await Promise.all([
+        getSignedUrl(file),
+        fetchFileContent(file),
+      ]);
+
+      if (!url && !previewText) {
+        toast.error("Could not open file preview");
+        return;
+      }
+
+      setViewingFile({
+        url,
+        name: file.file_name,
+        type: file.file_type,
+        previewText,
+      });
+    } finally {
+      setIsPreviewLoading(false);
+    }
   };
 
   const handleDownloadFile = async (file: StudyFile) => {
@@ -421,7 +408,7 @@ export default function SmartWorkspace() {
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5">{formatSize(file.file_size)} · {format(new Date(file.created_at), "MMM d, yyyy")}</p>
                           <div className="flex gap-2 mt-2 mb-2">
-                            <button onClick={() => handleOpenFile(file)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"><Eye className="w-3 h-3" /> Open</button>
+                             <button onClick={() => handleOpenFile(file)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors" disabled={isPreviewLoading}><Eye className="w-3 h-3" /> {isPreviewLoading ? "Opening..." : "Open"}</button>
                             <button onClick={() => handleDownloadFile(file)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"><Download className="w-3 h-3" /> Download</button>
                             {/* Move to room */}
                             {rooms.length > 0 && (
@@ -556,13 +543,25 @@ export default function SmartWorkspace() {
               </div>
             </div>
             <div className="flex-1 overflow-hidden">
-              {["PDF", "TXT"].includes(viewingFile.type) || viewingFile.name.endsWith(".pdf") || viewingFile.name.endsWith(".txt") ? (
+              {viewingFile.previewText ? (
+                <div className="h-full overflow-y-auto p-6 bg-card">
+                  <div className="max-w-4xl mx-auto space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-foreground">Document preview</p>
+                      <p className="text-xs text-muted-foreground">AI-readable extracted text</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-background p-4">
+                      <pre className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground font-sans">{viewingFile.previewText}</pre>
+                    </div>
+                  </div>
+                </div>
+              ) : viewingFile.url && (["PDF", "TXT"].includes(viewingFile.type) || viewingFile.name.toLowerCase().endsWith(".pdf") || viewingFile.name.toLowerCase().endsWith(".txt")) ? (
                 <iframe src={viewingFile.url} className="w-full h-full border-0" title={viewingFile.name} />
               ) : (
                 <div className="flex flex-col items-center justify-center h-full gap-4">
                   <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center"><FileText className="w-8 h-8 text-muted-foreground" /></div>
                   <p className="text-sm text-foreground font-medium">Preview not available for {viewingFile.type} files</p>
-                  <a href={viewingFile.url} download={viewingFile.name} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"><Download className="w-4 h-4 inline mr-1.5" /> Download File</a>
+                  {viewingFile.url && <a href={viewingFile.url} download={viewingFile.name} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"><Download className="w-4 h-4 inline mr-1.5" /> Download File</a>}
                 </div>
               )}
             </div>
