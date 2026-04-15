@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from "react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface FocusTimerState {
   duration: number;
@@ -41,8 +42,20 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
     if (seconds === 0 && running) {
       setRunning(false);
       toast.success("Focus session complete! 🎉");
+      // Save completed session to study_sessions
+      (async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase.from("study_sessions").insert({
+            user_id: user.id,
+            session_duration: duration,
+            subject: sessionType || "general",
+            completed: true,
+          });
+        }
+      })();
     }
-  }, [seconds, running]);
+  }, [seconds, running, duration, sessionType]);
 
   const setDuration = useCallback((d: number) => {
     if (running) return;

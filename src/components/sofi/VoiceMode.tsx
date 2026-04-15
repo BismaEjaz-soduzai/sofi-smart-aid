@@ -15,11 +15,14 @@ interface Message {
   content: string;
 }
 
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/study-chat`;
+const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voice-query`;
 
 const VOICE_COMMANDS: Record<string, string> = {
   stop: "STOP", repeat: "REPEAT", simplify: "SIMPLIFY",
   "say that again": "REPEAT", "make it simpler": "SIMPLIFY", "explain simpler": "SIMPLIFY",
+  "start focus session": "START_FOCUS", "start timer": "START_FOCUS",
+  "explain topic": "EXPLAIN", "summarize notes": "SUMMARIZE",
+  "quiz me": "QUIZ", "how am i doing": "PROGRESS",
 };
 
 // Select best available voice

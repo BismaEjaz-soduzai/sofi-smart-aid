@@ -198,6 +198,36 @@ export type Database = {
         }
         Relationships: []
       }
+      performance_metrics: {
+        Row: {
+          accuracy: number | null
+          created_at: string
+          id: string
+          score: number
+          subject: string
+          total_marks: number
+          user_id: string
+        }
+        Insert: {
+          accuracy?: number | null
+          created_at?: string
+          id?: string
+          score?: number
+          subject: string
+          total_marks?: number
+          user_id: string
+        }
+        Update: {
+          accuracy?: number | null
+          created_at?: string
+          id?: string
+          score?: number
+          subject?: string
+          total_marks?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       plan_sessions: {
         Row: {
           created_at: string
@@ -408,6 +438,36 @@ export type Database = {
           },
         ]
       }
+      study_sessions: {
+        Row: {
+          completed: boolean
+          created_at: string
+          date: string
+          id: string
+          session_duration: number
+          subject: string
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean
+          created_at?: string
+          date?: string
+          id?: string
+          session_duration?: number
+          subject?: string
+          user_id: string
+        }
+        Update: {
+          completed?: boolean
+          created_at?: string
+          date?: string
+          id?: string
+          session_duration?: number
+          subject?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tasks: {
         Row: {
           category: string
@@ -451,6 +511,39 @@ export type Database = {
           priority?: string
           reminder_enabled?: boolean
           title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_goals: {
+        Row: {
+          created_at: string
+          current_progress: number
+          deadline: string | null
+          goal_title: string
+          id: string
+          target_value: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_progress?: number
+          deadline?: string | null
+          goal_title: string
+          id?: string
+          target_value?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_progress?: number
+          deadline?: string | null
+          goal_title?: string
+          id?: string
+          target_value?: number
           updated_at?: string
           user_id?: string
         }
