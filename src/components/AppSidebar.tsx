@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   LogOut,
   Settings,
+  BarChart3,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -31,6 +32,7 @@ const mainNav = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Organizer", url: "/organizer", icon: FolderKanban },
   { title: "Planner", url: "/planner", icon: Calendar },
+  { title: "Analytics", url: "/analytics", icon: BarChart3 },
 ];
 
 const workspaceNav = [
