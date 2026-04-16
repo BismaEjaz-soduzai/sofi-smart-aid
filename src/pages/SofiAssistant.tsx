@@ -26,23 +26,23 @@ const SESSION_TYPES: SessionType[] = ["Study Session", "Assignment Work", "Readi
 const DURATIONS = [15, 25, 45, 60];
 
 const QUICK_TOOLS = [
-  { label: "Plan My Day", icon: Calendar, prompt: "Help me plan my day productively" },
-  { label: "Study Plan", icon: BookOpen, prompt: "Create a study plan for my upcoming exams" },
-  { label: "Explain Topic", icon: Lightbulb, prompt: "Explain this topic in simple words: " },
-  { label: "Rewrite Notes", icon: PenLine, prompt: "Rewrite and improve these notes: " },
-  { label: "Summarize Text", icon: Sparkles, prompt: "Summarize the following text: " },
-  { label: "Motivation", icon: Zap, prompt: "Give me a motivational productivity boost" },
-  { label: "Presentation Help", icon: Presentation, prompt: "Help me structure a presentation on: " },
-  { label: "Improve English", icon: Languages, prompt: "Improve the English of this text: " },
+  { label: "Plan My Day", icon: Calendar, prompt: "You are an intelligent study planner. Create a detailed, time-bound daily plan for me. Divide the day into blocks with specific time allocations. Prioritize important tasks. Keep tasks realistic. The sum of all time blocks should fill a productive day (8-10 hours). Include breaks." },
+  { label: "Study Plan", icon: BookOpen, prompt: "You are an intelligent study planner. Create a comprehensive study plan for my upcoming exams. Requirements:\n1. Strictly follow realistic time limits\n2. Divide time logically across topics\n3. Each task must include specific time allocation\n4. Prioritize important and weak topics\n5. Include revision sessions\n6. Keep tasks manageable\n\nAsk me about my subjects and exam dates to customize the plan." },
+  { label: "Explain Topic", icon: Lightbulb, prompt: "You are an advanced AI Study Assistant. Explain this topic with:\n1. Clear definition\n2. Simple explanation with real-world analogy\n3. Why it matters\n4. Common misconceptions\n5. Key takeaways\n\nTopic: " },
+  { label: "Rewrite Notes", icon: PenLine, prompt: "You are an advanced AI Study Assistant. Rewrite and improve these notes into a structured format:\n1. KEY SUMMARY — bullet points\n2. DETAILED NOTES — with headings, subheadings, highlighted key terms\n3. CORE CONCEPTS — simplified explanations\n4. KEY TAKEAWAYS — 5-10 revision points\n\nNotes to rewrite: " },
+  { label: "Summarize Text", icon: Sparkles, prompt: "You are an advanced AI Study Assistant. Summarize with:\n1. Executive summary (3-5 sentences)\n2. All key points as bullets\n3. Important terms defined\n4. Quick revision takeaways\n\nText to summarize: " },
+  { label: "Motivation", icon: Zap, prompt: "You are SOFI, a motivational study coach. Give me an energizing, personalized productivity boost. Include: 1) An inspiring thought, 2) A practical tip I can use right now, 3) A mini-challenge for the next hour. Keep it genuine and encouraging!" },
+  { label: "Presentation Help", icon: Presentation, prompt: "You are an advanced AI Study Assistant. Help me structure a 10-slide presentation:\n- Title slide, overview, 6-8 content slides, summary\n- Each slide: title + 3-5 concise bullets + speaker notes\n- Keep text presentation-friendly\n\nPresentation topic: " },
+  { label: "Improve English", icon: Languages, prompt: "You are an expert English writing tutor. Improve this text by:\n1. Fixing grammar and spelling\n2. Improving sentence structure and flow\n3. Using more academic/professional vocabulary\n4. Maintaining the original meaning\n5. Show the improved version, then list changes made\n\nText to improve: " },
 ];
 
 const SUGGESTED_PROMPTS = [
-  "Help me plan my day",
-  "Make me a study plan for finals",
-  "Explain cloud computing simply",
-  "Give me viva questions on OOP",
-  "Rewrite these notes more clearly",
-  "Help me stay productive today",
+  "Help me plan my day productively",
+  "Create a study plan for my finals",
+  "Explain cloud computing in simple words with examples",
+  "Generate 10 viva questions on OOP with answers",
+  "Rewrite my notes into structured study format",
+  "Quiz me on any topic — 10 MCQs with answers",
 ];
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/study-chat`;

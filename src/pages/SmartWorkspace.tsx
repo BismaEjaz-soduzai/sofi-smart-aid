@@ -43,24 +43,24 @@ const ROOM_PRESETS = [
 ];
 
 const ACTIONS = [
-  { label: "Explain", icon: HelpCircle, prompt: "Explain this document in simple words" },
-  { label: "Summarize", icon: BookOpen, prompt: "Summarize this document" },
-  { label: "Notes", icon: ClipboardList, prompt: "Generate study notes from this document" },
-  { label: "Quiz", icon: Sparkles, prompt: "Create quiz questions from this document" },
-  { label: "Assignment", icon: LayoutList, prompt: "Create an assignment draft from this document" },
-  { label: "Outline", icon: Presentation, prompt: "Create presentation outline from this document" },
-  { label: "Viva", icon: GraduationCap, prompt: "Generate viva questions from this document" },
+  { label: "Explain", icon: HelpCircle, prompt: "You are an advanced AI Study Assistant. Using ONLY the provided document content, create a complete learning package:\n\n1. KEY SUMMARY — Clear bullet points of the most important ideas\n2. CORE CONCEPTS EXPLAINED — Identify difficult concepts and explain them in very simple words with short examples\n3. KEY TAKEAWAYS — 5-10 important points for quick revision\n\nSTRICT: Use ONLY the provided content. Do NOT add outside knowledge. If information is unclear, say so." },
+  { label: "Summarize", icon: BookOpen, prompt: "You are an advanced AI Study Assistant. Summarize the following document content into:\n\n1. A concise executive summary (3-5 sentences)\n2. Bullet-point list of ALL key ideas and facts\n3. Important terms and their definitions\n\nSTRICT: Use ONLY the provided content. Do NOT hallucinate or add outside knowledge. Prioritize the most important concepts." },
+  { label: "Notes", icon: ClipboardList, prompt: "You are an advanced AI Study Assistant. Convert the provided document into complete, high-quality study notes:\n\n1. KEY SUMMARY — Clear bullet points of most important ideas\n2. DETAILED STUDY NOTES — Use headings and subheadings, explain in simple student-friendly language, highlight key terms and definitions\n3. CORE CONCEPTS EXPLAINED — Identify difficult concepts, explain in very simple words, add short examples\n4. KEY TAKEAWAYS — 5-10 important points for quick revision\n\nSTRICT: Use ONLY the provided content. Do NOT add outside knowledge. Keep formatting clean and readable." },
+  { label: "Quiz", icon: Sparkles, prompt: "You are an advanced AI Study Assistant. Generate a high-quality quiz from the provided document:\n\n- Create 10 multiple-choice questions\n- Each question MUST have 4 options (A, B, C, D)\n- Clearly mark the correct answer with ✅\n- Questions should test UNDERSTANDING, not just memorization\n- Include a mix of easy, medium, and hard questions\n- After all questions, provide an answer key with brief explanations\n\nSTRICT: Use ONLY the provided content. Do NOT add outside knowledge." },
+  { label: "Assignment", icon: LayoutList, prompt: "You are an advanced AI Study Assistant. Create a complete assignment draft from this document:\n\n1. Title and introduction\n2. Main body with proper sections and headings\n3. Key arguments and supporting points from the content\n4. Conclusion summarizing main findings\n5. References/citations from the document\n\nUse academic language. Structure it professionally. Use ONLY the provided content." },
+  { label: "Outline", icon: Presentation, prompt: "You are an advanced AI Study Assistant. Create a detailed presentation outline from this document:\n\n- Slide 1: Title slide with topic name\n- Slide 2: Overview/Agenda\n- Slides 3-10: Main content slides with:\n  • Slide title\n  • 3-5 bullet points per slide\n  • Speaker notes for each slide\n- Final slide: Summary/Key Takeaways\n\nKeep text concise (presentation-friendly). Use ONLY the provided content." },
+  { label: "Viva", icon: GraduationCap, prompt: "You are an advanced AI Study Assistant. Generate comprehensive viva/oral exam questions from this document:\n\n- Generate 15 viva questions ranging from basic to advanced\n- For each question, provide:\n  • The question\n  • Expected answer (2-3 sentences)\n  • Difficulty level (Easy/Medium/Hard)\n- Include conceptual, analytical, and application-based questions\n\nSTRICT: Use ONLY the provided content." },
 ];
 
 const AI_TOOLS = [
-  { label: "Explain Topic", icon: HelpCircle, prompt: "Explain this topic in simple words: " },
-  { label: "Summarize", icon: BookOpen, prompt: "Summarize the following: " },
-  { label: "Generate Notes", icon: ClipboardList, prompt: "Create detailed study notes on: " },
-  { label: "Quiz Questions", icon: Sparkles, prompt: "Generate 10 quiz questions with answers on: " },
-  { label: "Assignment Draft", icon: LayoutList, prompt: "Create an assignment draft on: " },
-  { label: "Presentation Outline", icon: Presentation, prompt: "Create a presentation outline on: " },
-  { label: "Viva Questions", icon: GraduationCap, prompt: "Generate viva questions on: " },
-  { label: "Simplify Topic", icon: Lightbulb, prompt: "Simplify this difficult topic step by step: " },
+  { label: "Explain Topic", icon: HelpCircle, prompt: "You are an advanced AI Study Assistant. Explain this topic in simple, student-friendly language with:\n1. A clear definition\n2. Simple explanation with an analogy or real-world example\n3. Why it matters\n4. Common misconceptions\n\nTopic: " },
+  { label: "Summarize", icon: BookOpen, prompt: "You are an advanced AI Study Assistant. Provide a structured summary with:\n1. Executive summary (3-5 sentences)\n2. Key points as bullet list\n3. Important terms defined\n4. Key takeaways for revision\n\nContent to summarize: " },
+  { label: "Generate Notes", icon: ClipboardList, prompt: "You are an advanced AI Study Assistant. Create complete study notes with:\n1. KEY SUMMARY — bullet points of main ideas\n2. DETAILED NOTES — headings, subheadings, simple language, highlighted key terms\n3. CORE CONCEPTS — difficult ideas explained simply with examples\n4. KEY TAKEAWAYS — 5-10 quick revision points\n\nTopic: " },
+  { label: "Quiz Questions", icon: Sparkles, prompt: "You are an advanced AI Study Assistant. Generate 10 high-quality MCQs:\n- Each with 4 options (A, B, C, D)\n- Mark correct answer with ✅\n- Test understanding, not memorization\n- Mix of easy, medium, hard\n- Include answer key with explanations\n\nTopic: " },
+  { label: "Assignment Draft", icon: LayoutList, prompt: "You are an advanced AI Study Assistant. Create a professional assignment draft with:\n1. Title and introduction\n2. Structured body with sections\n3. Key arguments with evidence\n4. Conclusion\n5. Reference suggestions\n\nTopic: " },
+  { label: "Presentation Outline", icon: Presentation, prompt: "You are an advanced AI Study Assistant. Create a 10-slide presentation outline:\n- Title slide, overview, 6-8 content slides, summary\n- Each slide: title + 3-5 concise bullets + speaker notes\n- Keep text presentation-friendly\n\nTopic: " },
+  { label: "Viva Questions", icon: GraduationCap, prompt: "You are an advanced AI Study Assistant. Generate 15 viva questions:\n- Range: basic → advanced\n- Each with expected answer (2-3 sentences)\n- Difficulty marked (Easy/Medium/Hard)\n- Mix of conceptual, analytical, application questions\n\nTopic: " },
+  { label: "Simplify Topic", icon: Lightbulb, prompt: "You are an advanced AI Study Assistant. Simplify this topic step by step:\n1. Explain like I'm 10 years old\n2. Use a real-world analogy\n3. Break complex parts into small pieces\n4. Give a simple example\n5. Summarize in one sentence\n\nTopic: " },
 ];
 
 const ACCEPTED = ".pdf,.docx,.doc,.ppt,.pptx,.txt";
