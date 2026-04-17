@@ -5,7 +5,7 @@ import {
   Presentation, Library, X, Calendar as CalendarIcon, Target, TrendingUp,
   CheckCircle2, Clock, MoreHorizontal, Trash2, ChevronRight,
   Loader2, Send, LayoutList, CalendarDays, Edit3, Save, ArrowLeft,
-  AlertCircle, Bell,
+  AlertCircle, Bell, RefreshCw, Wand2,
 } from "lucide-react";
 import { usePlans, useCreatePlan, useDeletePlan, useUpdatePlan, usePlanSessions, useCreateSession, useToggleSession, type Plan, type PlanInsert } from "@/hooks/usePlans";
 import { useTasks } from "@/hooks/useTasks";
@@ -409,6 +409,10 @@ function PlanDetail({ plan, onBack, onDelete, onUpdate }: { plan: Plan; onBack: 
     start_date: plan.start_date || "", end_date: plan.end_date || "", duration: plan.duration || "",
     category: plan.category, emoji: plan.emoji || "📘",
   });
+  const [replanOpen, setReplanOpen] = useState(false);
+  const [replanInstructions, setReplanInstructions] = useState("");
+  const [replanLoading, setReplanLoading] = useState(false);
+  const [replanDraft, setReplanDraft] = useState("");
   const style = CATEGORY_STYLES[plan.category] || CATEGORY_STYLES.study;
 
   const completed = sessions.filter((s) => s.is_completed).length;
@@ -439,6 +443,53 @@ function PlanDetail({ plan, onBack, onDelete, onUpdate }: { plan: Plan; onBack: 
     toast.success("Plan updated");
   };
 
+  const handleReplan = async () => {
+    if (replanLoading) return;
+    setReplanLoading(true); setReplanDraft("");
+    let content = "";
+    try {
+      const originalPrompt = plan.goal || plan.title;
+      const previousPlan = plan.description || "(no previous plan content)";
+      const userChanges = replanInstructions.trim() || "Improve and refine the plan; make it more realistic and actionable.";
+      const prompt = `You are an expert study planner. The user has an existing plan and wants to REPLAN it with changes.\n\nORIGINAL GOAL:\n${originalPrompt}\n\nPREVIOUS PLAN:\n${previousPlan}\n\nUSER'S CHANGE REQUESTS:\n${userChanges}\n\nGenerate a COMPLETE NEW plan that:\n- Strictly respects the user's change requests\n- Keeps clear titles, dates, milestones and time allocations\n- Stays within the original timeframe unless the user changed it\n- Is realistic, structured and ready to follow\n\nOutput as clean markdown.`;
+      const resp = await fetch(CHAT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+        body: JSON.stringify({ messages: [{ role: "user", content: prompt }] }),
+      });
+      if (!resp.ok || !resp.body) throw new Error("AI error");
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, idx); buffer = buffer.slice(idx + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (!line.startsWith("data: ")) continue;
+          const json = line.slice(6).trim();
+          if (json === "[DONE]") break;
+          try { const p = JSON.parse(json); const c = p.choices?.[0]?.delta?.content; if (c) { content += c; setReplanDraft(content); } }
+          catch { buffer = line + "\n" + buffer; break; }
+        }
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to replan");
+    } finally {
+      setReplanLoading(false);
+    }
+  };
+
+  const acceptReplan = async () => {
+    if (!replanDraft.trim()) return;
+    await onUpdate({ description: replanDraft, source_type: "ai" });
+    toast.success("Plan replanned and saved");
+    setReplanOpen(false); setReplanInstructions(""); setReplanDraft("");
+  };
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col h-[calc(100vh-3.5rem)]">
       {/* Header bar */}
@@ -446,7 +497,10 @@ function PlanDetail({ plan, onBack, onDelete, onUpdate }: { plan: Plan; onBack: 
         <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setReplanOpen((v) => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-info/10 text-info text-xs font-medium hover:bg-info/20 transition-colors">
+            <Wand2 className="w-3.5 h-3.5" /> {replanOpen ? "Close Replan" : "Replan with AI"}
+          </button>
           <button onClick={() => setEditing(!editing)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs font-medium hover:text-foreground transition-colors">
             <Edit3 className="w-3.5 h-3.5" /> {editing ? "Cancel" : "Edit"}
           </button>
@@ -543,12 +597,55 @@ function PlanDetail({ plan, onBack, onDelete, onUpdate }: { plan: Plan; onBack: 
             </div>
           </div>
 
+          {/* Replan with AI panel */}
+          <AnimatePresence>
+            {replanOpen && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                <div className="glass-card p-5 space-y-3 border-info/30">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-foreground flex items-center gap-1.5"><Wand2 className="w-4 h-4 text-info" /> Replan with AI</p>
+                    <button onClick={() => { setReplanOpen(false); setReplanDraft(""); setReplanInstructions(""); }} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Tell the AI what to change. It will rewrite the whole plan keeping your goal in mind.</p>
+                  <textarea value={replanInstructions} onChange={(e) => setReplanInstructions(e.target.value)} rows={3} placeholder="e.g. Make it shorter, add daily revision, focus more on chapter 3, exclude weekends..." className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none resize-none focus:ring-1 focus:ring-ring" />
+                  <div className="flex flex-wrap gap-1.5">
+                    {["Make it shorter and more focused", "Add daily checkpoints", "Exclude weekends", "Make it more intensive", "Slow it down — I have less time per day"].map((s) => (
+                      <button key={s} onClick={() => setReplanInstructions((v) => v ? `${v}\n${s}` : s)} className="px-2 py-1 rounded-lg text-[10px] font-medium bg-muted/60 text-muted-foreground hover:bg-info/10 hover:text-info transition-colors">{s}</button>
+                    ))}
+                  </div>
+                  <button onClick={handleReplan} disabled={replanLoading} className="w-full py-2 rounded-lg bg-info text-info-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-1.5">
+                    {replanLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Replanning...</> : <><RefreshCw className="w-4 h-4" /> Generate New Plan</>}
+                  </button>
+                  {replanDraft && (
+                    <div className="bg-muted/30 border border-border rounded-xl p-4 max-h-80 overflow-auto">
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">Preview</p>
+                      <div className="prose prose-sm dark:prose-invert max-w-none"><ReactMarkdown>{replanDraft}</ReactMarkdown></div>
+                      {!replanLoading && (
+                        <div className="flex gap-2 mt-3">
+                          <button onClick={acceptReplan} className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90"><Save className="w-3 h-3 inline mr-1" /> Replace Current Plan</button>
+                          <button onClick={handleReplan} className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs font-medium hover:text-foreground"><RefreshCw className="w-3 h-3 inline mr-1" /> Regenerate</button>
+                          <button onClick={() => setReplanDraft("")} className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs font-medium hover:text-foreground">Discard</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Description / AI Plan */}
           {plan.description && !editing && (
             <div className="glass-card p-5">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-3">
-                {plan.source_type === "ai" ? "🧠 AI-Generated Plan" : "📝 Description"}
-              </p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                  {plan.source_type === "ai" ? "🧠 AI-Generated Plan" : "📝 Description"}
+                </p>
+                <div className="flex gap-1.5">
+                  <button onClick={() => setEditing(true)} className="flex items-center gap-1 px-2 py-1 rounded-md bg-muted text-muted-foreground text-[10px] font-medium hover:text-foreground transition-colors"><Edit3 className="w-3 h-3" /> Edit</button>
+                  <button onClick={() => setReplanOpen(true)} className="flex items-center gap-1 px-2 py-1 rounded-md bg-info/10 text-info text-[10px] font-medium hover:bg-info/20 transition-colors"><Wand2 className="w-3 h-3" /> Replan</button>
+                </div>
+              </div>
               <div className="prose prose-sm dark:prose-invert max-w-none"><ReactMarkdown>{plan.description}</ReactMarkdown></div>
             </div>
           )}
