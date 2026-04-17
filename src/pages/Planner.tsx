@@ -597,12 +597,55 @@ function PlanDetail({ plan, onBack, onDelete, onUpdate }: { plan: Plan; onBack: 
             </div>
           </div>
 
+          {/* Replan with AI panel */}
+          <AnimatePresence>
+            {replanOpen && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                <div className="glass-card p-5 space-y-3 border-info/30">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-foreground flex items-center gap-1.5"><Wand2 className="w-4 h-4 text-info" /> Replan with AI</p>
+                    <button onClick={() => { setReplanOpen(false); setReplanDraft(""); setReplanInstructions(""); }} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Tell the AI what to change. It will rewrite the whole plan keeping your goal in mind.</p>
+                  <textarea value={replanInstructions} onChange={(e) => setReplanInstructions(e.target.value)} rows={3} placeholder="e.g. Make it shorter, add daily revision, focus more on chapter 3, exclude weekends..." className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none resize-none focus:ring-1 focus:ring-ring" />
+                  <div className="flex flex-wrap gap-1.5">
+                    {["Make it shorter and more focused", "Add daily checkpoints", "Exclude weekends", "Make it more intensive", "Slow it down — I have less time per day"].map((s) => (
+                      <button key={s} onClick={() => setReplanInstructions((v) => v ? `${v}\n${s}` : s)} className="px-2 py-1 rounded-lg text-[10px] font-medium bg-muted/60 text-muted-foreground hover:bg-info/10 hover:text-info transition-colors">{s}</button>
+                    ))}
+                  </div>
+                  <button onClick={handleReplan} disabled={replanLoading} className="w-full py-2 rounded-lg bg-info text-info-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-1.5">
+                    {replanLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Replanning...</> : <><RefreshCw className="w-4 h-4" /> Generate New Plan</>}
+                  </button>
+                  {replanDraft && (
+                    <div className="bg-muted/30 border border-border rounded-xl p-4 max-h-80 overflow-auto">
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">Preview</p>
+                      <div className="prose prose-sm dark:prose-invert max-w-none"><ReactMarkdown>{replanDraft}</ReactMarkdown></div>
+                      {!replanLoading && (
+                        <div className="flex gap-2 mt-3">
+                          <button onClick={acceptReplan} className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90"><Save className="w-3 h-3 inline mr-1" /> Replace Current Plan</button>
+                          <button onClick={handleReplan} className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs font-medium hover:text-foreground"><RefreshCw className="w-3 h-3 inline mr-1" /> Regenerate</button>
+                          <button onClick={() => setReplanDraft("")} className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs font-medium hover:text-foreground">Discard</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Description / AI Plan */}
           {plan.description && !editing && (
             <div className="glass-card p-5">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-3">
-                {plan.source_type === "ai" ? "🧠 AI-Generated Plan" : "📝 Description"}
-              </p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                  {plan.source_type === "ai" ? "🧠 AI-Generated Plan" : "📝 Description"}
+                </p>
+                <div className="flex gap-1.5">
+                  <button onClick={() => setEditing(true)} className="flex items-center gap-1 px-2 py-1 rounded-md bg-muted text-muted-foreground text-[10px] font-medium hover:text-foreground transition-colors"><Edit3 className="w-3 h-3" /> Edit</button>
+                  <button onClick={() => setReplanOpen(true)} className="flex items-center gap-1 px-2 py-1 rounded-md bg-info/10 text-info text-[10px] font-medium hover:bg-info/20 transition-colors"><Wand2 className="w-3 h-3" /> Replan</button>
+                </div>
+              </div>
               <div className="prose prose-sm dark:prose-invert max-w-none"><ReactMarkdown>{plan.description}</ReactMarkdown></div>
             </div>
           )}
