@@ -497,7 +497,10 @@ function PlanDetail({ plan, onBack, onDelete, onUpdate }: { plan: Plan; onBack: 
         <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setReplanOpen((v) => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-info/10 text-info text-xs font-medium hover:bg-info/20 transition-colors">
+            <Wand2 className="w-3.5 h-3.5" /> {replanOpen ? "Close Replan" : "Replan with AI"}
+          </button>
           <button onClick={() => setEditing(!editing)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs font-medium hover:text-foreground transition-colors">
             <Edit3 className="w-3.5 h-3.5" /> {editing ? "Cancel" : "Edit"}
           </button>
