@@ -5,7 +5,7 @@ import {
   Presentation, Library, X, Calendar as CalendarIcon, Target, TrendingUp,
   CheckCircle2, Clock, MoreHorizontal, Trash2, ChevronRight,
   Loader2, Send, LayoutList, CalendarDays, Edit3, Save, ArrowLeft,
-  AlertCircle, Bell,
+  AlertCircle, Bell, RefreshCw, Wand2,
 } from "lucide-react";
 import { usePlans, useCreatePlan, useDeletePlan, useUpdatePlan, usePlanSessions, useCreateSession, useToggleSession, type Plan, type PlanInsert } from "@/hooks/usePlans";
 import { useTasks } from "@/hooks/useTasks";
