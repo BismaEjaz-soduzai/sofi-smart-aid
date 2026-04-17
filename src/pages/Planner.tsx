@@ -409,6 +409,10 @@ function PlanDetail({ plan, onBack, onDelete, onUpdate }: { plan: Plan; onBack: 
     start_date: plan.start_date || "", end_date: plan.end_date || "", duration: plan.duration || "",
     category: plan.category, emoji: plan.emoji || "📘",
   });
+  const [replanOpen, setReplanOpen] = useState(false);
+  const [replanInstructions, setReplanInstructions] = useState("");
+  const [replanLoading, setReplanLoading] = useState(false);
+  const [replanDraft, setReplanDraft] = useState("");
   const style = CATEGORY_STYLES[plan.category] || CATEGORY_STYLES.study;
 
   const completed = sessions.filter((s) => s.is_completed).length;
@@ -437,6 +441,53 @@ function PlanDetail({ plan, onBack, onDelete, onUpdate }: { plan: Plan; onBack: 
     });
     setEditing(false);
     toast.success("Plan updated");
+  };
+
+  const handleReplan = async () => {
+    if (replanLoading) return;
+    setReplanLoading(true); setReplanDraft("");
+    let content = "";
+    try {
+      const originalPrompt = plan.goal || plan.title;
+      const previousPlan = plan.description || "(no previous plan content)";
+      const userChanges = replanInstructions.trim() || "Improve and refine the plan; make it more realistic and actionable.";
+      const prompt = `You are an expert study planner. The user has an existing plan and wants to REPLAN it with changes.\n\nORIGINAL GOAL:\n${originalPrompt}\n\nPREVIOUS PLAN:\n${previousPlan}\n\nUSER'S CHANGE REQUESTS:\n${userChanges}\n\nGenerate a COMPLETE NEW plan that:\n- Strictly respects the user's change requests\n- Keeps clear titles, dates, milestones and time allocations\n- Stays within the original timeframe unless the user changed it\n- Is realistic, structured and ready to follow\n\nOutput as clean markdown.`;
+      const resp = await fetch(CHAT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+        body: JSON.stringify({ messages: [{ role: "user", content: prompt }] }),
+      });
+      if (!resp.ok || !resp.body) throw new Error("AI error");
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, idx); buffer = buffer.slice(idx + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (!line.startsWith("data: ")) continue;
+          const json = line.slice(6).trim();
+          if (json === "[DONE]") break;
+          try { const p = JSON.parse(json); const c = p.choices?.[0]?.delta?.content; if (c) { content += c; setReplanDraft(content); } }
+          catch { buffer = line + "\n" + buffer; break; }
+        }
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to replan");
+    } finally {
+      setReplanLoading(false);
+    }
+  };
+
+  const acceptReplan = async () => {
+    if (!replanDraft.trim()) return;
+    await onUpdate({ description: replanDraft, source_type: "ai" });
+    toast.success("Plan replanned and saved");
+    setReplanOpen(false); setReplanInstructions(""); setReplanDraft("");
   };
 
   return (
