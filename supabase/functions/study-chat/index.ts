@@ -220,7 +220,7 @@ async function streamLovable(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "google/gemini-flash-1.5",
+      model: "google/gemini-3-flash-preview",
       stream: true,
       temperature: 0.7,
       max_tokens: maxTokens,
@@ -229,7 +229,8 @@ async function streamLovable(
   });
 
   if (!upstream.ok || !upstream.body) {
-    return errorResponse(`Lovable AI error: ${await upstream.text()}`, upstream.status);
+    const text = await upstream.text();
+    return errorResponse(`Lovable AI error: ${text}`, upstream.status);
   }
   return new Response(upstream.body, { headers: sseHeaders });
 }
@@ -256,22 +257,20 @@ serve(async (req) => {
   const systemPrompt = voiceMode ? VOICE_SYSTEM : TEXT_SYSTEM;
   const maxTokens = voiceMode ? 300 : 1500;
 
+  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   const openaiKey = Deno.env.get("OPENAI_API_KEY");
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
-  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
 
   try {
+    if (lovableKey) return await streamLovable(lovableKey, systemPrompt, messages, maxTokens);
     if (geminiKey) return await streamGemini(geminiKey, systemPrompt, messages, maxTokens);
     if (openaiKey) return await streamOpenAI(openaiKey, systemPrompt, messages, maxTokens);
     if (anthropicKey) return await streamAnthropic(anthropicKey, systemPrompt, messages, maxTokens);
-    if (lovableKey) return await streamLovable(lovableKey, systemPrompt, messages, maxTokens);
   } catch (err) {
     console.error("Provider error", err);
     return errorResponse(err instanceof Error ? err.message : "Provider error");
   }
 
-  return errorResponse(
-    "Add GEMINI_API_KEY in Supabase Edge Functions Secrets. Get free key at https://aistudio.google.com/app/apikey",
-  );
+  return errorResponse("AI backend is not configured.");
 });
