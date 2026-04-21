@@ -181,7 +181,7 @@ export default function Planner() {
   const resetForm = () => setForm({ title: "", goal: "", category: "study", emoji: "📘", color_tag: "blue", start_date: null, end_date: null, duration: "", description: "", source_type: "manual" });
 
   if (view === "plan-detail" && selectedPlan) {
-    return <PlanDetail plan={selectedPlan} onBack={() => { setView("overview"); setSelectedPlan(null); }} onDelete={async () => { await deletePlan.mutateAsync(selectedPlan.id); setView("overview"); setSelectedPlan(null); toast.success("Plan deleted"); }} onUpdate={async (updates) => { await updatePlan.mutateAsync({ id: selectedPlan.id, ...updates }); setSelectedPlan({ ...selectedPlan, ...updates }); }} />;
+    return <PlanDetail plan={selectedPlan} navigate={navigate} onBack={() => { setView("overview"); setSelectedPlan(null); }} onDelete={async () => { await deletePlan.mutateAsync(selectedPlan.id); setView("overview"); setSelectedPlan(null); toast.success("Plan deleted"); }} onUpdate={async (updates) => { await updatePlan.mutateAsync({ id: selectedPlan.id, ...updates }); setSelectedPlan({ ...selectedPlan, ...updates }); }} />;
   }
 
   return (
