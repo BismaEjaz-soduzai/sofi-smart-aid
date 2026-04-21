@@ -53,7 +53,7 @@ export function AppHeader() {
         <h2 className="text-sm font-semibold text-foreground tracking-tight truncate">{pageTitle}</h2>
       </div>
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2">
         <GlobalSearch />
         <GlobalVoiceButton />
         <NotificationCenter />

@@ -119,10 +119,11 @@ export function GlobalVoiceButton() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="w-8 h-8 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 flex items-center justify-center transition-colors"
+        aria-label="Open quick voice assistant"
+        className="w-9 h-9 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 flex items-center justify-center transition-colors flex-shrink-0"
         title="Quick voice"
       >
-        <Mic className="w-3.5 h-3.5" />
+        <Mic className="w-4 h-4" />
       </button>
 
       <AnimatePresence>
