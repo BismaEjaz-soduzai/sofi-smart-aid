@@ -57,10 +57,18 @@ const SUGGESTED_AI_PROMPTS = [
 ];
 
 type View = "overview" | "create" | "ai-generate" | "plan-detail";
-type Tab = "plans" | "calendar";
+type Tab = "board" | "list" | "calendar";
 
 const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } } };
 const item = { hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } };
+
+interface SessionLite {
+  id: string;
+  plan_id: string;
+  title: string;
+  date: string | null;
+  is_completed: boolean;
+}
 
 export default function Planner() {
   const { data: plans = [], isLoading } = usePlans();
@@ -72,8 +80,9 @@ export default function Planner() {
   const navigate = useNavigate();
   const notifiedRef = useRef<Set<string>>(new Set());
   const [view, setView] = useState<View>("overview");
-  const [tab, setTab] = useState<Tab>("plans");
+  const [tab, setTab] = useState<Tab>("board");
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [allSessions, setAllSessions] = useState<SessionLite[]>([]);
   const [form, setForm] = useState<PlanInsert>({
     title: "", goal: "", category: "study", emoji: "📘", color_tag: "blue",
     start_date: null, end_date: null, duration: "", description: "", source_type: "manual",
@@ -83,8 +92,74 @@ export default function Planner() {
   const [aiOutput, setAiOutput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
 
-  const activePlans = plans.filter((p) => p.status === "active");
+  // Fetch ALL sessions across user's plans (for board grouping, today's focus, stats)
+  useEffect(() => {
+    if (plans.length === 0) { setAllSessions([]); return; }
+    const planIds = plans.map((p) => p.id);
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("plan_sessions")
+        .select("id, plan_id, title, date, is_completed")
+        .in("plan_id", planIds);
+      if (!cancelled) setAllSessions((data || []) as SessionLite[]);
+    })();
+    return () => { cancelled = true; };
+  }, [plans]);
+
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const sessionsByPlan = useMemo(() => {
+    const m = new Map<string, SessionLite[]>();
+    allSessions.forEach((s) => {
+      if (!m.has(s.plan_id)) m.set(s.plan_id, []);
+      m.get(s.plan_id)!.push(s);
+    });
+    return m;
+  }, [allSessions]);
+
+  const isPlanOverdue = (planId: string) => {
+    const sess = sessionsByPlan.get(planId) || [];
+    return sess.some((s) => !s.is_completed && s.date && s.date < todayStr);
+  };
+  const planHasTodaySession = (planId: string) => {
+    const sess = sessionsByPlan.get(planId) || [];
+    return sess.some((s) => !s.is_completed && s.date === todayStr);
+  };
+
+  const todayFocus = useMemo(() => {
+    return allSessions
+      .filter((s) => !s.is_completed && s.date === todayStr)
+      .map((s) => ({ ...s, plan: plans.find((p) => p.id === s.plan_id) }))
+      .filter((s) => s.plan);
+  }, [allSessions, plans, todayStr]);
+
+  const completedThisWeek = useMemo(() => {
+    const cutoff = format(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), "yyyy-MM-dd");
+    return allSessions.filter((s) => s.is_completed && s.date && s.date >= cutoff).length;
+  }, [allSessions]);
+
+  const activePlans = plans.filter((p) => p.status === "active" && !isPlanOverdue(p.id));
+  const overduePlans = plans.filter((p) => p.status === "active" && isPlanOverdue(p.id));
   const completedPlans = plans.filter((p) => p.status === "completed");
+  const avgProgress = plans.length ? Math.round(plans.reduce((a, p) => a + (p.progress || 0), 0) / plans.length) : 0;
+
+  const toggleTodaySession = async (sessionId: string, planId: string) => {
+    setAllSessions((cur) => cur.map((s) => s.id === sessionId ? { ...s, is_completed: true } : s));
+    const { error } = await supabase.from("plan_sessions").update({ is_completed: true } as any).eq("id", sessionId);
+    if (error) {
+      toast.error("Failed to update");
+      setAllSessions((cur) => cur.map((s) => s.id === sessionId ? { ...s, is_completed: false } : s));
+      return;
+    }
+    const planSess = (sessionsByPlan.get(planId) || []).map((s) => s.id === sessionId ? { ...s, is_completed: true } : s);
+    if (planSess.length) {
+      const done = planSess.filter((s) => s.is_completed).length;
+      const progress = Math.round((done / planSess.length) * 100);
+      const status = progress === 100 ? "completed" : "active";
+      await supabase.from("plans").update({ progress, status } as any).eq("id", planId);
+    }
+    toast.success("Nice — one down 🎯");
+  };
 
   // Milestone notifications — checks every hour and on plan changes
   useEffect(() => {
