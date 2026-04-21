@@ -47,10 +47,10 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceKey);
 
+    // Allow file owner OR a room member (workspace shared room) to read.
     const { data: fileRecord, error: fileRecordError } = await supabase
       .from("study_files")
-      .select("id")
-      .eq("user_id", user.id)
+      .select("id, user_id, room_id")
       .eq("file_path", filePath)
       .maybeSingle();
 
@@ -61,7 +61,25 @@ serve(async (req) => {
       });
     }
 
-    // Download file from storage
+    if (fileRecord.user_id !== user.id) {
+      // Check shared room access
+      let allowed = false;
+      if (fileRecord.room_id) {
+        const { data: member } = await supabase
+          .from("workspace_room_members")
+          .select("id")
+          .eq("room_id", fileRecord.room_id)
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (member) allowed = true;
+      }
+      if (!allowed) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const { data: fileData, error: downloadError } = await supabase.storage
       .from("study-files")
       .download(filePath);
@@ -101,8 +119,8 @@ serve(async (req) => {
 
     extractedText = normalizeText(extractedText);
 
-    if (extractedText.length > 40000) {
-      extractedText = extractedText.slice(0, 40000) + "\n\n[... text truncated at 40,000 characters]";
+    if (extractedText.length > 60000) {
+      extractedText = extractedText.slice(0, 60000) + "\n\n[... text truncated at 60,000 characters]";
     }
 
     return new Response(JSON.stringify({ text: extractedText }), {
@@ -130,8 +148,12 @@ function normalizeText(value: string) {
     .replace(/\r/g, "")
     .replace(/\t/g, " ")
     .replace(/[ ]{2,}/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\n{4,}/g, "\n\n\n")
     .trim();
+}
+
+function stripXmlTags(value: string) {
+  return value.replace(/<[^>]+>/g, " ");
 }
 
 async function extractPdfText(buffer: ArrayBuffer, fileName: string): Promise<string> {
@@ -139,11 +161,18 @@ async function extractPdfText(buffer: ArrayBuffer, fileName: string): Promise<st
     if (buffer.byteLength > 15 * 1024 * 1024) {
       return `[PDF file: ${fileName} - File is too large to preview reliably.]`;
     }
-
-    const { text } = await extractText(new Uint8Array(buffer), { mergePages: true });
-    const cleaned = normalizeText(text || "");
-    if (cleaned.length > 0) {
-      return `[Extracted from PDF: ${fileName}]\n\n${cleaned}`;
+    // Per-page extraction so we can insert page markers
+    const result = await extractText(new Uint8Array(buffer), { mergePages: false });
+    const pages: string[] = Array.isArray(result.text) ? result.text : [String(result.text || "")];
+    const blocks = pages
+      .map((page, idx) => {
+        const cleaned = normalizeText(page || "");
+        if (!cleaned) return "";
+        return `## Page ${idx + 1}\n\n${cleaned}`;
+      })
+      .filter(Boolean);
+    if (blocks.length > 0) {
+      return blocks.join("\n\n---\n\n");
     }
     return `[PDF file: ${fileName} - Text extraction limited. The document may contain scanned images.]`;
   } catch {
@@ -151,9 +180,31 @@ async function extractPdfText(buffer: ArrayBuffer, fileName: string): Promise<st
   }
 }
 
-function stripXmlTags(value: string) {
-  // Defensive: remove any XML/HTML tags that may have leaked through
-  return value.replace(/<[^>]+>/g, " ");
+/**
+ * Walk a single <w:p> paragraph and emit a markdown line:
+ * - Heading1/2/3 → # / ## / ###
+ * - List items (numPr present) → "- " bullet
+ * - Plain text otherwise
+ */
+function paragraphToMarkdown(paraXml: string): string {
+  const styleMatch = paraXml.match(/<w:pStyle[^>]*w:val="([^"]+)"/);
+  const style = styleMatch?.[1] || "";
+  const isList = /<w:numPr\b/.test(paraXml);
+
+  const parts = [...paraXml.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)]
+    .map((m) => stripXmlTags(decodeXml(m[1])))
+    .filter((p) => p.length > 0);
+
+  // Preserve tabs as spaces, lines with only whitespace become empty
+  const text = parts.join("").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+
+  if (/^Heading1$/i.test(style) || /^Title$/i.test(style)) return `# ${text}`;
+  if (/^Heading2$/i.test(style)) return `## ${text}`;
+  if (/^Heading3$/i.test(style)) return `### ${text}`;
+  if (/^Heading[4-9]$/i.test(style)) return `#### ${text}`;
+  if (isList) return `- ${text}`;
+  return text;
 }
 
 async function extractDocxText(buffer: ArrayBuffer, fileName: string): Promise<string> {
@@ -162,24 +213,22 @@ async function extractDocxText(buffer: ArrayBuffer, fileName: string): Promise<s
     const documentXml = await zip.file("word/document.xml")?.async("string");
     if (!documentXml) return `[DOCX file: ${fileName} - Document structure not found.]`;
 
-    // Walk paragraph by paragraph to preserve line breaks.
-    // CRITICAL: match <w:t> or <w:t ...> ONLY — never <w:tab>, <w:tabs>, <w:tbl> etc.
-    // The char after `w:t` must be `>` or whitespace.
-    const paragraphs = documentXml.split(/<\/w:p>/g);
+    // Split on paragraph open tags
+    const paragraphs = documentXml.split(/(?=<w:p[\s>])/g);
     const lines: string[] = [];
     for (const para of paragraphs) {
-      const parts = [...para.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)]
-        .map((m) => stripXmlTags(decodeXml(m[1])))
-        .filter((p) => p.trim().length > 0);
-      if (parts.length > 0) lines.push(parts.join(""));
+      const md = paragraphToMarkdown(para);
+      if (md) lines.push(md);
+      else if (lines.length && lines[lines.length - 1] !== "") lines.push("");
     }
 
     if (lines.length > 0) {
-      return `[Extracted from DOCX: ${fileName}]\n\n${normalizeText(lines.join("\n"))}`;
+      return normalizeText(lines.join("\n"));
     }
 
     return `[DOCX file: ${fileName} - Limited text extraction.]`;
-  } catch {
+  } catch (e) {
+    console.error("DOCX extract error", e);
     return `[DOCX file: ${fileName} - Could not extract text content.]`;
   }
 }
@@ -193,26 +242,45 @@ async function extractPptxText(buffer: ArrayBuffer, fileName: string): Promise<s
 
     const slides: string[] = [];
 
-    for (const slideName of slideNames) {
-      const xml = await zip.file(slideName)?.async("string");
+    for (let i = 0; i < slideNames.length; i++) {
+      const xml = await zip.file(slideNames[i])?.async("string");
       if (!xml) continue;
 
-      // Match <a:t> or <a:t ...> only — NOT <a:tab>, <a:tbl>, etc.
-      const textParts = [...xml.matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)]
-        .map((match) => stripXmlTags(decodeXml(match[1])))
-        .filter((part) => part.trim().length > 0);
+      // Each <a:p> is a paragraph (which may be a title or bullet)
+      const paragraphs = xml.split(/(?=<a:p[\s>])/g);
+      const slideLines: string[] = [];
+      let titleFound = false;
 
-      if (textParts.length > 0) {
-        slides.push(textParts.join(" "));
+      for (const p of paragraphs) {
+        const parts = [...p.matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)]
+          .map((m) => stripXmlTags(decodeXml(m[1])))
+          .filter((part) => part.length > 0);
+        const text = parts.join("").replace(/\s+/g, " ").trim();
+        if (!text) continue;
+
+        // First non-empty paragraph of the slide → title
+        if (!titleFound) {
+          slideLines.push(`## Slide ${i + 1}: ${text}`);
+          titleFound = true;
+        } else {
+          slideLines.push(`- ${text}`);
+        }
       }
+
+      if (!titleFound) {
+        slideLines.push(`## Slide ${i + 1}`);
+      }
+
+      slides.push(slideLines.join("\n"));
     }
 
     if (slides.length > 0) {
-      return `[Extracted from PPTX: ${fileName}]\n\n${normalizeText(slides.map((slide, index) => `Slide ${index + 1}: ${slide}`).join("\n\n"))}`;
+      return slides.join("\n\n---\n\n");
     }
 
     return `[PPTX file: ${fileName} - No readable slide text was found.]`;
-  } catch {
+  } catch (e) {
+    console.error("PPTX extract error", e);
     return `[PPTX file: ${fileName} - Could not extract slide text.]`;
   }
 }
