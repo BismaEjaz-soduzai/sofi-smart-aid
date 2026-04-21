@@ -151,18 +151,31 @@ async function extractPdfText(buffer: ArrayBuffer, fileName: string): Promise<st
   }
 }
 
+function stripXmlTags(value: string) {
+  // Defensive: remove any XML/HTML tags that may have leaked through
+  return value.replace(/<[^>]+>/g, " ");
+}
+
 async function extractDocxText(buffer: ArrayBuffer, fileName: string): Promise<string> {
   try {
     const zip = await JSZip.loadAsync(buffer);
     const documentXml = await zip.file("word/document.xml")?.async("string");
     if (!documentXml) return `[DOCX file: ${fileName} - Document structure not found.]`;
 
-    const parts = [...documentXml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)]
-      .map((match) => decodeXml(match[1]))
-      .filter((part) => part.trim().length > 0);
+    // Walk paragraph by paragraph to preserve line breaks.
+    // CRITICAL: match <w:t> or <w:t ...> ONLY — never <w:tab>, <w:tabs>, <w:tbl> etc.
+    // The char after `w:t` must be `>` or whitespace.
+    const paragraphs = documentXml.split(/<\/w:p>/g);
+    const lines: string[] = [];
+    for (const para of paragraphs) {
+      const parts = [...para.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)]
+        .map((m) => stripXmlTags(decodeXml(m[1])))
+        .filter((p) => p.trim().length > 0);
+      if (parts.length > 0) lines.push(parts.join(""));
+    }
 
-    if (parts.length > 0) {
-      return `[Extracted from DOCX: ${fileName}]\n\n${normalizeText(parts.join(" "))}`;
+    if (lines.length > 0) {
+      return `[Extracted from DOCX: ${fileName}]\n\n${normalizeText(lines.join("\n"))}`;
     }
 
     return `[DOCX file: ${fileName} - Limited text extraction.]`;
@@ -184,8 +197,9 @@ async function extractPptxText(buffer: ArrayBuffer, fileName: string): Promise<s
       const xml = await zip.file(slideName)?.async("string");
       if (!xml) continue;
 
-      const textParts = [...xml.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)]
-        .map((match) => decodeXml(match[1]))
+      // Match <a:t> or <a:t ...> only — NOT <a:tab>, <a:tbl>, etc.
+      const textParts = [...xml.matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)]
+        .map((match) => stripXmlTags(decodeXml(match[1])))
         .filter((part) => part.trim().length > 0);
 
       if (textParts.length > 0) {
