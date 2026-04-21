@@ -2,6 +2,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AppHeader } from "@/components/AppHeader";
 import { Outlet } from "react-router-dom";
+import VoiceNavigator from "@/components/VoiceNavigator";
 
 export default function AppLayout() {
   return (
@@ -14,6 +15,7 @@ export default function AppLayout() {
             <Outlet />
           </main>
         </div>
+        <VoiceNavigator />
       </div>
     </SidebarProvider>
   );

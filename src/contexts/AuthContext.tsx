@@ -41,13 +41,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInWithEmail = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const cleanEmail = email.trim().toLowerCase();
+    const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
     return { error: error?.message ?? null };
   };
 
   const signUpWithEmail = async (email: string, password: string, name: string) => {
+    const cleanEmail = email.trim().toLowerCase();
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: cleanEmail,
       password,
       options: {
         data: { full_name: name },
@@ -55,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     });
     if (error) return { error: error.message, needsConfirmation: false };
+    // With auto-confirm enabled the session is returned immediately; otherwise prompt verification.
     const needsConfirmation = !!data.user && !data.session;
     return { error: null, needsConfirmation };
   };
