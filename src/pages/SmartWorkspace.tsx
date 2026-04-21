@@ -575,21 +575,23 @@ export default function SmartWorkspace() {
         return;
       }
 
-      // For PDFs, images, txt — open directly in new tab (browser handles preview)
-      const directOpen = ["PDF", "TXT"].includes(file.file_type);
-      if (directOpen) {
+      const type = file.file_type.toUpperCase();
+
+      // PDFs, TXT, images — browser renders natively
+      if (["PDF", "TXT"].includes(type)) {
         window.open(url, "_blank", "noopener,noreferrer");
         return;
       }
 
-      // For Office docs — try to load extracted text preview in modal
-      const previewText = await fetchFileContent(file);
-      if (previewText) {
-        setViewingFile({ url, name: file.file_name, type: file.file_type, previewText });
-      } else {
-        // Fallback: just open the file URL
-        window.open(url, "_blank", "noopener,noreferrer");
+      // Office docs — render the ACTUAL document (not extracted text) via Office Online viewer
+      if (["DOCX", "DOC", "PPT", "PPTX", "XLS", "XLSX"].includes(type)) {
+        const officeUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}`;
+        window.open(officeUrl, "_blank", "noopener,noreferrer");
+        return;
       }
+
+      // Fallback — open directly
+      window.open(url, "_blank", "noopener,noreferrer");
     } catch (err) {
       console.error("Open file error", err);
       toast.error("Could not open file");
