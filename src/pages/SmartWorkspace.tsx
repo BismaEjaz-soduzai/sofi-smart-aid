@@ -406,8 +406,8 @@ async function getSignedUrl(file: StudyFile): Promise<string | null> {
 
 export default function SmartWorkspace() {
   const { user } = useAuth();
-  const { profile } = useProfile();
-  const myName = profile?.display_name || user?.email?.split("@")[0] || "User";
+  const profileQuery = useProfile();
+  const myName = profileQuery.data?.display_name || user?.email?.split("@")[0] || "User";
   const { rooms, createRoom, deleteRoom, joinRoomByCode } = useWorkspaceRooms();
   const [activeRoomId, setActiveRoomId] = useState<string | undefined>(undefined);
   const activeRoom = rooms.find((r) => r.id === activeRoomId);
