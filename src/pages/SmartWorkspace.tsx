@@ -1175,6 +1175,146 @@ export default function SmartWorkspace() {
         </div>
       )}
 
+      {/* TAB: Recordings */}
+      {tab === "recordings" && (
+        <div className="space-y-3">
+          {!activeRoom ? (
+            <div className="text-center py-16">
+              <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3"><Film className="w-6 h-6 text-muted-foreground" /></div>
+              <p className="text-sm font-medium text-foreground">Open a room to view recordings</p>
+              <p className="text-xs text-muted-foreground mt-1">Recordings made during room calls are stored here</p>
+            </div>
+          ) : recordingsLoading ? (
+            <div className="space-y-3">{[1, 2].map((i) => <div key={i} className="h-24 rounded-xl bg-muted/50 animate-pulse" />)}</div>
+          ) : recordings.length === 0 ? (
+            <div className="text-center py-16">
+              <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3"><Film className="w-6 h-6 text-muted-foreground" /></div>
+              <p className="text-sm font-medium text-foreground">No recordings yet</p>
+              <p className="text-xs text-muted-foreground mt-1">Start a call and tap "Record" — videos appear here for the whole team</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {recordings.map((rec) => (
+                <motion.div key={rec.path} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                  className="bg-card border border-border rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Film className="w-4 h-4 text-primary flex-shrink-0" />
+                      <p className="text-xs font-medium text-foreground truncate">{rec.name}</p>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground flex-shrink-0">{formatSize(rec.size)}</span>
+                  </div>
+                  {rec.signedUrl && (
+                    <video controls preload="metadata" src={rec.signedUrl} className="w-full rounded-lg bg-black aspect-video" />
+                  )}
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] text-muted-foreground">{format(new Date(rec.createdAt), "MMM d, yyyy · h:mm a")}</p>
+                    <div className="flex items-center gap-1.5">
+                      <a href={rec.signedUrl} download={rec.name} className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
+                        <Download className="w-3 h-3" /> Download
+                      </a>
+                      <button onClick={() => removeRecording.mutate(rec.path)} className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-destructive/70 hover:bg-destructive/10 hover:text-destructive transition-colors">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB: Pinboard (links / YouTube) */}
+      {tab === "pinboard" && (
+        <div className="space-y-3">
+          {!activeRoom ? (
+            <div className="text-center py-16">
+              <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3"><LinkIcon className="w-6 h-6 text-muted-foreground" /></div>
+              <p className="text-sm font-medium text-foreground">Open a room to use the pinboard</p>
+              <p className="text-xs text-muted-foreground mt-1">Save YouTube videos and reference links for the team</p>
+            </div>
+          ) : (
+            <>
+              <div className="bg-card border border-border rounded-xl p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <LinkIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <input
+                    value={newLinkUrl}
+                    onChange={(e) => setNewLinkUrl(e.target.value)}
+                    placeholder="Paste a YouTube or web link..."
+                    className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={newLinkTitle}
+                    onChange={(e) => setNewLinkTitle(e.target.value)}
+                    placeholder="Title (optional)"
+                    className="flex-1 bg-muted/50 border border-border rounded-lg px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!newLinkUrl.trim()) return;
+                      await addLink.mutateAsync({ url: newLinkUrl, title: newLinkTitle });
+                      setNewLinkUrl(""); setNewLinkTitle("");
+                    }}
+                    disabled={!newLinkUrl.trim() || addLink.isPending}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
+                  >
+                    {addLink.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />} Pin
+                  </button>
+                </div>
+              </div>
+
+              {linksLoading ? (
+                <div className="space-y-3">{[1, 2].map((i) => <div key={i} className="h-20 rounded-xl bg-muted/50 animate-pulse" />)}</div>
+              ) : links.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-sm font-medium text-foreground">Nothing pinned yet</p>
+                  <p className="text-xs text-muted-foreground mt-1">Paste a YouTube/web link above to get started</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {links.map((link) => {
+                    const ytEmbed = getYouTubeEmbedUrl(link.url);
+                    const ytThumb = getYouTubeThumbnail(link.url);
+                    return (
+                      <motion.div key={link.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                        className="bg-card border border-border rounded-xl p-3 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-foreground truncate">{link.title || link.url}</p>
+                            <p className="text-[10px] text-muted-foreground truncate">{link.url}</p>
+                          </div>
+                          <button onClick={() => removeLink.mutate(link.id)} className="text-destructive/60 hover:text-destructive transition-colors">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                        {ytEmbed ? (
+                          <iframe src={ytEmbed} title={link.title || link.url} allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture" allowFullScreen className="w-full aspect-video rounded-lg bg-black border-0" />
+                        ) : ytThumb ? (
+                          <img src={ytThumb} alt={link.title} className="w-full rounded-lg" />
+                        ) : (
+                          <a href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1.5 py-3 rounded-lg bg-muted/60 text-xs font-medium text-primary hover:bg-primary/10 transition-colors">
+                            <ExternalLink className="w-3.5 h-3.5" /> Open link
+                          </a>
+                        )}
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span>{format(new Date(link.created_at), "MMM d, yyyy")}</span>
+                          <a href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
+                            <ExternalLink className="w-3 h-3" /> Open
+                          </a>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       <AnimatePresence>
         {viewingFile && (
