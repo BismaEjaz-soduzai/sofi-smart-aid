@@ -2,12 +2,13 @@ import { motion } from "framer-motion";
 import {
   CheckSquare, StickyNote, Calendar, Sparkles, TrendingUp,
   Timer, MessageCircle, BookOpen, AlertTriangle, Zap, Target,
-  ArrowRight, Flame,
+  ArrowRight, Flame, Pause, Play, RotateCcw,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useTasks } from "@/hooks/useTasks";
 import { useNotes } from "@/hooks/useNotes";
 import { usePlans } from "@/hooks/usePlans";
+import { useFocusTimer } from "@/contexts/FocusTimerContext";
 import { format, isPast, isToday, isTomorrow, parseISO } from "date-fns";
 
 const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
@@ -25,6 +26,7 @@ export default function Dashboard() {
   const { data: tasks = [] } = useTasks();
   const { data: notes = [] } = useNotes();
   const { data: plans = [] } = usePlans();
+  const { seconds, running, setRunning, reset, duration, sessionType } = useFocusTimer();
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -159,17 +161,66 @@ export default function Dashboard() {
       {/* Bottom row */}
       <motion.div variants={item} className="grid lg:grid-cols-2 gap-6">
         <div className="glass-card p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <Timer className="w-4 h-4 text-primary" />
-            <h2 className="font-semibold text-foreground">Quick Focus</h2>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Timer className="w-4 h-4 text-primary" />
+              <h2 className="font-semibold text-foreground">Quick Focus</h2>
+            </div>
+            {running && <span className="text-[10px] px-2 py-0.5 rounded-full bg-success/10 text-success font-medium animate-pulse">LIVE</span>}
           </div>
-          <div className="text-center py-4">
-            <div className="text-4xl font-light text-foreground tracking-tight font-mono">25:00</div>
-            <p className="text-sm text-muted-foreground mt-2">Ready to focus</p>
+          <div className="text-center py-2">
+            <div className="text-4xl font-light text-foreground tracking-tight font-mono">
+              {String(Math.floor(seconds / 60)).padStart(2, "0")}:{String(seconds % 60).padStart(2, "0")}
+            </div>
+            <p className="text-sm text-muted-foreground mt-2">
+              {running ? `${sessionType} in progress` : "Ready to focus"}
+            </p>
+            {running && (
+              <div className="mt-3 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-1000"
+                  style={{ width: `${((duration * 60 - seconds) / (duration * 60)) * 100}%` }}
+                />
+              </div>
+            )}
           </div>
-          <Link to="/assistant" className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors">
-            Start Focus Mode
-          </Link>
+          {running ? (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setRunning(false)}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-warning/10 text-warning text-sm font-medium hover:bg-warning/20 transition-colors"
+              >
+                <Pause className="w-4 h-4" /> Pause
+              </button>
+              <button
+                onClick={reset}
+                className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+              <Link
+                to="/assistant?section=focus"
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                Open
+              </Link>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setRunning(true)}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                <Play className="w-4 h-4" /> Start
+              </button>
+              <Link
+                to="/assistant?section=focus"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors"
+              >
+                Focus Mode
+              </Link>
+            </div>
+          )}
         </div>
 
         <div className="glass-card p-6 space-y-4">

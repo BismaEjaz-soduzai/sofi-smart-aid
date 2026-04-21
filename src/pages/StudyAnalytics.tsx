@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTasks } from "@/hooks/useTasks";
 import { useNotes } from "@/hooks/useNotes";
 import { usePlans } from "@/hooks/usePlans";
+import { useStudySessions } from "@/hooks/useStudySessions";
 import AdaptiveInsights from "@/components/sofi/AdaptiveInsights";
 
 const COLORS = [
@@ -33,6 +34,7 @@ export default function StudyAnalytics() {
   const { data: tasks = [] } = useTasks();
   const { data: notes = [] } = useNotes();
   const { data: plans = [] } = usePlans();
+  const { data: sessions = [] } = useStudySessions();
 
   const stats = useMemo(() => {
     const today = startOfDay(new Date());
@@ -64,6 +66,18 @@ export default function StudyAnalytics() {
       Completed: completed.filter((t: any) => t.completed_at && isSameDay(new Date(t.completed_at), d)).length,
       Created: tasks.filter((t: any) => isSameDay(new Date(t.created_at), d)).length,
     }));
+
+    // Focus minutes per day from completed study_sessions
+    const focusByDay = last7.map((d) => {
+      const mins = sessions
+        .filter((s: any) => s.completed && isSameDay(new Date(s.created_at), d))
+        .reduce((acc: number, s: any) => acc + (s.session_duration || 0), 0);
+      return { day: format(d, "EEE"), Minutes: mins, Hours: +(mins / 60).toFixed(2) };
+    });
+    const totalFocusMinWeek = focusByDay.reduce((a, b) => a + b.Minutes, 0);
+    const todayFocusMin = sessions
+      .filter((s: any) => s.completed && isSameDay(new Date(s.created_at), today))
+      .reduce((acc: number, s: any) => acc + (s.session_duration || 0), 0);
 
     let cum = 0;
     const monthly = last30.map((d, i) => {
@@ -137,8 +151,9 @@ export default function StudyAnalytics() {
       total: tasks.length, completedCount: completed.length, completionRate, streak, overdue,
       activePlans, weekly, monthly, radar, priority, peakHourLabel, avgPerDay, best, heatmap,
       score, label, scoreColor, notesCount: notes.length,
+      focusByDay, totalFocusMinWeek, todayFocusMin,
     };
-  }, [tasks, notes, plans]);
+  }, [tasks, notes, plans, sessions]);
 
   const intensityClass = (c: number) => {
     if (c === 0) return "bg-muted";
@@ -174,12 +189,44 @@ export default function StudyAnalytics() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard icon={CheckCircle2} label="Tasks Completed" value={stats.completedCount} sub={`of ${stats.total} total`} />
         <StatCard icon={TrendingUp} label="Completion Rate" value={`${Math.round(stats.completionRate)}%`} />
         <StatCard icon={Flame} label="Day Streak" value={stats.streak} sub="consecutive days" />
-        <StatCard icon={AlertTriangle} label="Overdue Tasks" value={stats.overdue} destructive={stats.overdue > 0} />
+        <StatCard
+          icon={Clock}
+          label="Focus Today"
+          value={`${Math.floor(stats.todayFocusMin / 60)}h ${stats.todayFocusMin % 60}m`}
+          sub={`${(stats.totalFocusMinWeek / 60).toFixed(1)}h this week`}
+        />
+        <StatCard icon={AlertTriangle} label="Overdue" value={stats.overdue} destructive={stats.overdue > 0} />
       </div>
+
+      {/* Focus time per day chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center justify-between">
+            <span>Focus Time · Last 7 Days</span>
+            <span className="text-xs font-normal text-muted-foreground">
+              Total: {(stats.totalFocusMinWeek / 60).toFixed(1)}h
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={stats.focusByDay}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="day" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} unit="m" />
+              <Tooltip
+                contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+                formatter={(v: any) => [`${v} min (${(Number(v) / 60).toFixed(2)}h)`, "Focus"]}
+              />
+              <Bar dataKey="Minutes" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
 
       {/* Charts row */}
       <div className="grid lg:grid-cols-2 gap-4">

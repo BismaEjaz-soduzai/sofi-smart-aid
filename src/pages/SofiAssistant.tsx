@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Send, Sparkles, Loader2, Timer, Play, Pause, RotateCcw,
@@ -48,12 +49,29 @@ const SUGGESTED_PROMPTS = [
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/study-chat`;
 
 export default function SofiAssistant() {
-  const [section, setSection] = useState<Section>("chat");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialSection = (searchParams.get("section") as Section) || "chat";
+  const [section, setSection] = useState<Section>(initialSection);
   const [sharedPrompt, setSharedPrompt] = useState("");
+
+  useEffect(() => {
+    const s = searchParams.get("section") as Section | null;
+    if (s && s !== section) setSection(s);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const changeSection = (s: Section) => {
+    setSection(s);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("section", s);
+      return next;
+    }, { replace: true });
+  };
 
   const handleAskSofi = (prompt: string) => {
     setSharedPrompt(prompt);
-    setSection("chat");
+    changeSection("chat");
   };
 
   return (
@@ -67,7 +85,7 @@ export default function SofiAssistant() {
         ]).map((s) => (
           <button
             key={s.key}
-            onClick={() => setSection(s.key)}
+            onClick={() => changeSection(s.key)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
               section === s.key
                 ? "bg-primary/10 text-primary"
@@ -89,9 +107,9 @@ export default function SofiAssistant() {
           </div>
         </div>
       )}
-      {section === "voice" && <VoiceMode onSwitchToText={() => setSection("chat")} />}
+      {section === "voice" && <VoiceMode onSwitchToText={() => changeSection("chat")} />}
       {section === "focus" && <FocusSection />}
-      {section === "tools" && <ToolsSection onUsePrompt={(p) => { setSharedPrompt(p); setSection("chat"); }} />}
+      {section === "tools" && <ToolsSection onUsePrompt={(p) => { setSharedPrompt(p); changeSection("chat"); }} />}
     </div>
   );
 }
