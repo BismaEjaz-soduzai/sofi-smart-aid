@@ -12,7 +12,10 @@ import { useRoomMessages, useSendRoomMessage, useUploadRoomFile } from "@/hooks/
 import { useCallSignal } from "@/hooks/useCallSignal";
 import { useIncomingCallNotifier } from "@/hooks/useIncomingCallNotifier";
 import CallBar from "@/components/chat/CallBar";
+import JitsiCallPanel from "@/components/chat/JitsiCallPanel";
 import VoiceMicButton from "@/components/VoiceMicButton";
+import { useRoomLinks, getYouTubeEmbedUrl, getYouTubeThumbnail } from "@/hooks/useRoomLinks";
+import { useRoomRecordings } from "@/hooks/useRoomRecordings";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/integrations/supabase/client";
@@ -349,7 +352,7 @@ Topic: ` },
 const ACCEPTED = ".pdf,.docx,.doc,.ppt,.pptx,.txt";
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/study-chat`;
 
-type Tab = "uploads" | "ai-tools" | "generated" | "chat";
+type Tab = "uploads" | "ai-tools" | "generated" | "chat" | "recordings" | "pinboard";
 
 interface GeneratedItem {
   id: string;
