@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -11,6 +12,15 @@ export interface RoomLink {
   url: string;
   note: string | null;
   created_at: string;
+}
+
+function getSafeUrl(raw: string): URL | null {
+  try {
+    const normalized = /^https?:\/\//i.test(raw.trim()) ? raw.trim() : `https://${raw.trim()}`;
+    return new URL(normalized);
+  } catch {
+    return null;
+  }
 }
 
 function getYouTubeId(url: string): string | null {
@@ -42,6 +52,23 @@ export function useRoomLinks(roomId: string | undefined | null) {
   const { user } = useAuth();
   const qc = useQueryClient();
 
+  useEffect(() => {
+    if (!roomId || !user) return;
+
+    const channel = supabase
+      .channel(`room-links-${roomId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "room_links", filter: `room_id=eq.${roomId}` },
+        () => qc.invalidateQueries({ queryKey: ["room-links", roomId] }),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [roomId, user, qc]);
+
   const linksQuery = useQuery({
     queryKey: ["room-links", roomId],
     queryFn: async () => {
@@ -59,22 +86,23 @@ export function useRoomLinks(roomId: string | undefined | null) {
 
   const addLink = useMutation({
     mutationFn: async (input: { url: string; title?: string; note?: string }) => {
-      if (!user || !roomId) throw new Error("Not ready");
-      let url = input.url.trim();
-      if (!url) throw new Error("URL is required");
-      if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+      if (!user || !roomId) throw new Error("Open a room first");
+      const parsedUrl = getSafeUrl(input.url);
+      if (!parsedUrl) throw new Error("Enter a valid web or YouTube link");
+
+      const cleanTitle = input.title?.trim() || parsedUrl.hostname.replace(/^www\./, "") || parsedUrl.href;
       const { error } = await (supabase as any).from("room_links").insert({
         room_id: roomId,
         user_id: user.id,
-        url,
-        title: input.title?.trim() || url,
+        url: parsedUrl.href,
+        title: cleanTitle,
         note: input.note?.trim() || "",
       });
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["room-links", roomId] });
-      toast.success("Link saved");
+      toast.success("Link pinned");
     },
     onError: (e: Error) => toast.error(e.message),
   });
