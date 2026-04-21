@@ -1,14 +1,16 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Sparkles, BookOpen, GraduationCap, Rocket, Briefcase,
   Presentation, Library, X, Calendar as CalendarIcon, Target, TrendingUp,
   CheckCircle2, Clock, MoreHorizontal, Trash2, ChevronRight,
   Loader2, Send, LayoutList, CalendarDays, Edit3, Save, ArrowLeft,
-  AlertCircle, Bell, RefreshCw, Wand2,
+  AlertCircle, Bell, RefreshCw, Wand2, Brain,
 } from "lucide-react";
 import { usePlans, useCreatePlan, useDeletePlan, useUpdatePlan, usePlanSessions, useCreateSession, useToggleSession, type Plan, type PlanInsert } from "@/hooks/usePlans";
 import { useTasks } from "@/hooks/useTasks";
+import { supabase } from "@/integrations/supabase/client";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, parseISO, startOfWeek, endOfWeek, differenceInDays, isPast, isToday, isTomorrow } from "date-fns";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
