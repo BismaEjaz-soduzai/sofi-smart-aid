@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Mail, Lock, User, Sparkles, ArrowRight, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock, User, Sparkles, ArrowRight, Loader2, MailCheck } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { lovable } from "@/integrations/lovable/index";
 import AuthLayout from "@/components/AuthLayout";
-import { Field, SocialButton, GoogleIcon } from "@/pages/Login";
+import { Field } from "@/pages/Login";
 import { toast } from "sonner";
 
 export default function SignUp() {
@@ -16,6 +15,7 @@ export default function SignUp() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
 
   const set = (key: string) => (v: string) => setForm((f) => ({ ...f, [key]: v }));
 
@@ -35,15 +35,54 @@ export default function SignUp() {
     e.preventDefault();
     if (!validate()) return;
     setLoading(true);
-    const { error } = await signUpWithEmail(form.email, form.password, form.name);
+    const { error, needsConfirmation } = await signUpWithEmail(form.email, form.password, form.name);
     setLoading(false);
     if (error) {
       toast.error(error);
-    } else {
-      toast.success("Account created successfully!");
-      navigate("/dashboard");
+      return;
     }
+    if (needsConfirmation) {
+      setConfirmationEmail(form.email);
+      return;
+    }
+    toast.success("Account created successfully!");
+    navigate("/dashboard");
   };
+
+  if (confirmationEmail) {
+    return (
+      <AuthLayout>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35 }}
+          className="space-y-6 text-center"
+        >
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+            <MailCheck className="w-8 h-8 text-primary" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold text-foreground tracking-tight">Check your email</h1>
+            <p className="text-sm text-muted-foreground">
+              We sent a verification link to
+            </p>
+            <p className="text-base font-medium text-primary break-all px-4 py-2 rounded-lg bg-primary/10 inline-block">
+              {confirmationEmail}
+            </p>
+            <p className="text-sm text-muted-foreground pt-2">
+              Click the link in the email to activate your account, then sign in.
+            </p>
+          </div>
+          <button
+            onClick={() => navigate("/login")}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+          >
+            Back to Sign In
+          </button>
+        </motion.div>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout>
@@ -63,21 +102,6 @@ export default function SignUp() {
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold text-foreground tracking-tight">Create your account</h1>
           <p className="text-sm text-muted-foreground">Start your productivity journey with SOFI</p>
-        </div>
-
-        <div className="space-y-2.5">
-          <SocialButton icon={<GoogleIcon />} label="Continue with Google" onClick={async () => {
-            const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
-            if (result.error) { toast.error("Google sign-in failed"); return; }
-            if (result.redirected) return;
-            navigate("/dashboard");
-          }} />
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-border" />
-          <span className="text-xs text-muted-foreground">or continue with email</span>
-          <div className="flex-1 h-px bg-border" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3.5">
