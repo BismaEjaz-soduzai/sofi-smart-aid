@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTasks } from "@/hooks/useTasks";
 import { useNotes } from "@/hooks/useNotes";
 import { usePlans } from "@/hooks/usePlans";
+import { useStudySessions } from "@/hooks/useStudySessions";
 import AdaptiveInsights from "@/components/sofi/AdaptiveInsights";
 
 const COLORS = [
@@ -33,6 +34,7 @@ export default function StudyAnalytics() {
   const { data: tasks = [] } = useTasks();
   const { data: notes = [] } = useNotes();
   const { data: plans = [] } = usePlans();
+  const { data: sessions = [] } = useStudySessions();
 
   const stats = useMemo(() => {
     const today = startOfDay(new Date());
