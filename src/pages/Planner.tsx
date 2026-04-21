@@ -140,15 +140,78 @@ export default function Planner() {
     setView("create");
   };
 
+  const buildContextualPrompt = (extra: string) => {
+    // Compute real day count from dates if both are set
+    let dayInfo = "";
+    let correctionNote = "";
+    if (form.start_date && form.end_date) {
+      const s = parseISO(form.start_date);
+      const e = parseISO(form.end_date);
+      const days = differenceInDays(e, s) + 1;
+      if (days > 0) {
+        dayInfo = `\nEXACT TIMEFRAME: ${days} day(s), from ${form.start_date} to ${form.end_date}.`;
+        // Detect mismatch between user's duration text and actual days
+        if (form.duration && form.duration.trim()) {
+          const dur = form.duration.toLowerCase();
+          const declaredDays =
+            /week/.test(dur) ? (parseInt(dur) || 1) * 7 :
+            /month/.test(dur) ? (parseInt(dur) || 1) * 30 :
+            /day/.test(dur) ? (parseInt(dur) || 0) : 0;
+          if (declaredDays && Math.abs(declaredDays - days) > 1) {
+            correctionNote = `\nIMPORTANT CORRECTION: The user wrote duration "${form.duration}" (~${declaredDays} days), but the start/end dates only cover ${days} days. Begin your response with one short sentence correcting this (e.g. "This is not a ${form.duration}; based on your dates it is a ${days}-day plan. I'll generate a ${days}-day plan accordingly."), then produce the plan strictly within ${days} days.`;
+          }
+        }
+      }
+    } else if (form.duration) {
+      dayInfo = `\nDURATION: ${form.duration} (no exact dates provided — pick a sensible day-by-day breakdown).`;
+    }
+
+    const fields = [
+      form.title && `Title: ${form.title}`,
+      form.goal && `Goal: ${form.goal}`,
+      form.category && `Category: ${form.category}`,
+      form.color_tag && `Color tag: ${form.color_tag}`,
+      form.start_date && `Start date: ${form.start_date}`,
+      form.end_date && `End date: ${form.end_date}`,
+      form.duration && `User-stated duration: ${form.duration}`,
+      form.description && `Existing notes/description: ${form.description}`,
+    ].filter(Boolean).join("\n");
+
+    return `You are an expert study & productivity planner. Generate a clean, structured plan using ALL the user's form data below.${dayInfo}${correctionNote}
+
+USER'S PLAN DETAILS:
+${fields || "(no fields filled yet)"}
+
+${extra ? `ADDITIONAL USER REQUEST:\n${extra}\n` : ""}
+RULES YOU MUST FOLLOW:
+1. STRICTLY respect the start_date and end_date. Never schedule anything outside that range.
+2. If a correction note is given above, output that one-line correction first, then the plan.
+3. Output the plan as clean Markdown with this structure:
+   - A short 1-line summary
+   - A "## Day-by-day Plan" section with one "### Day N — <YYYY-MM-DD> — <focus>" block per day, each containing 2-5 bullet tasks (optionally prefixed with a time slot like "09:00–10:30 —").
+   - Then a "## Grouped by Category" section with bullet points grouping tasks by theme/category.
+4. Be realistic, specific to the goal "${form.goal || form.title || "the user's objective"}", and match the category "${form.category}".
+5. Do NOT invent dates outside the given range. Do NOT pad with filler days.`;
+  };
+
   const handleAiGenerate = async () => {
-    if (!aiPrompt.trim() || aiLoading) return;
+    // Allow generation if form has meaningful data OR user typed an extra prompt
+    const hasFormData = form.title.trim() || form.goal?.trim() || (form.start_date && form.end_date);
+    if (!hasFormData && !aiPrompt.trim()) {
+      toast.error("Add a title, goal or dates first so the AI can plan accurately.");
+      return;
+    }
+    if (aiLoading) return;
     setAiLoading(true); setAiOutput("");
     let content = "";
     try {
+      const fullPrompt = view === "create"
+        ? buildContextualPrompt(aiPrompt.trim())
+        : `You are a study planner. Create a detailed structured plan with sessions/milestones. Format with clear titles, dates, and checkpoints:\n\n${aiPrompt}`;
       const resp = await fetch(CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
-        body: JSON.stringify({ messages: [{ role: "user", content: `You are a study planner. Create a detailed structured plan with sessions/milestones. Format with clear titles, dates, and checkpoints:\n\n${aiPrompt}` }] }),
+        body: JSON.stringify({ messages: [{ role: "user", content: fullPrompt }] }),
       });
       if (!resp.ok) { await throwIfBadResponse(resp, "AI Plan"); }
       if (!resp.body) throw new Error("No body");
