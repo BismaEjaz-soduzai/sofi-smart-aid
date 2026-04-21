@@ -15,6 +15,8 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameM
 import { toast } from "sonner";
 import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
 import ReactMarkdown from "react-markdown";
+import { useDailyActivity } from "@/hooks/useStudySessions";
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, RadialBar, RadialBarChart, PolarAngleAxis } from "recharts";
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/study-chat`;
 
