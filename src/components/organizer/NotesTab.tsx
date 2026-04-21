@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { format } from "date-fns";
-import { StickyNote, Plus, Search, Trash2, X, Loader2, Inbox, Tag } from "lucide-react";
+import { format, isPast } from "date-fns";
+import { StickyNote, Plus, Search, Trash2, X, Loader2, Inbox, Tag, Bell, BellOff } from "lucide-react";
 import { useNotes, useCreateNote, useUpdateNote, useDeleteNote } from "@/hooks/useNotes";
 import type { Note } from "@/hooks/useNotes";
 import { toast } from "sonner";
@@ -118,6 +118,12 @@ export default function NotesTab() {
                     className="w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive hover:bg-destructive/5 transition-all flex-shrink-0"><Trash2 className="w-3 h-3" /></button>
                 </div>
                 <p className="text-xs text-muted-foreground line-clamp-3 mt-1.5 min-h-[3rem]">{note.content || "No content"}</p>
+                {note.reminder_at && (
+                  <div className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium ${isPast(new Date(note.reminder_at)) ? "bg-muted text-muted-foreground" : "bg-warning/10 text-warning"}`}>
+                    <Bell className="w-2.5 h-2.5" />
+                    {format(new Date(note.reminder_at), "MMM d, h:mm a")}
+                  </div>
+                )}
                 <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${categoryColors[note.category] || categoryColors.general}`}>{CATEGORIES.find((c) => c.value === note.category)?.label || note.category}</span>
                   <span className="text-[10px] text-muted-foreground">{format(new Date(note.updated_at), "MMM d")}</span>
@@ -137,10 +143,24 @@ function FilterBtn({ active, onClick, children }: { active: boolean; onClick: ()
   );
 }
 
-function NoteEditor({ initial, onClose, onSave, loading }: { initial: Note | null; onClose: () => void; onSave: (data: { title: string; content: string; category: string }) => void; loading: boolean }) {
+function NoteEditor({ initial, onClose, onSave, loading }: { initial: Note | null; onClose: () => void; onSave: (data: { title: string; content: string; category: string; reminder_at: string | null }) => void; loading: boolean }) {
   const [title, setTitle] = useState(initial?.title || "");
   const [content, setContent] = useState(initial?.content || "");
   const [category, setCategory] = useState(initial?.category || "general");
+  // Convert ISO -> "yyyy-MM-ddTHH:mm" for <input type="datetime-local">
+  const [reminderAt, setReminderAt] = useState<string>(() => {
+    if (!initial?.reminder_at) return "";
+    const d = new Date(initial.reminder_at);
+    if (isNaN(d.getTime())) return "";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
+
+  const requestNotifPermission = () => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -161,9 +181,35 @@ function NoteEditor({ initial, onClose, onSave, loading }: { initial: Note | nul
             ))}
           </div>
         </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"><Bell className="w-3 h-3" /> Reminder (optional)</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="datetime-local"
+              value={reminderAt}
+              onChange={(e) => { setReminderAt(e.target.value); requestNotifPermission(); }}
+              className="flex-1 px-3.5 py-2.5 rounded-xl bg-muted/40 border border-border text-sm text-foreground placeholder:text-muted-foreground/60 outline-none focus:ring-2 focus:ring-ring/20"
+            />
+            {reminderAt && (
+              <button
+                type="button"
+                onClick={() => setReminderAt("")}
+                className="px-2.5 py-2 rounded-lg bg-muted text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 text-xs"
+                title="Clear reminder"
+              >
+                <BellOff className="w-3.5 h-3.5" /> Clear
+              </button>
+            )}
+          </div>
+          <p className="text-[10px] text-muted-foreground">You'll get an in-app & browser notification at this time.</p>
+        </div>
         <div className="flex gap-2 pt-2">
           <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors">Cancel</button>
-          <button onClick={() => { if (!title.trim()) { toast.error("Title is required"); return; } onSave({ title: title.trim(), content, category }); }} disabled={loading}
+          <button onClick={() => {
+            if (!title.trim()) { toast.error("Title is required"); return; }
+            const reminderIso = reminderAt ? new Date(reminderAt).toISOString() : null;
+            onSave({ title: title.trim(), content, category, reminder_at: reminderIso });
+          }} disabled={loading}
             className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-2">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : initial ? "Save" : "Create"}
           </button>
