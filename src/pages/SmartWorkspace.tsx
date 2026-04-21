@@ -10,7 +10,9 @@ import {
 import { useStudyFiles, useWorkspaceRooms, StudyFile } from "@/hooks/useStudyFiles";
 import { useRoomMessages, useSendRoomMessage, useUploadRoomFile } from "@/hooks/useRoomChat";
 import { useCallSignal } from "@/hooks/useCallSignal";
+import { useIncomingCallNotifier } from "@/hooks/useIncomingCallNotifier";
 import CallBar from "@/components/chat/CallBar";
+import VoiceMicButton from "@/components/VoiceMicButton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/integrations/supabase/client";
