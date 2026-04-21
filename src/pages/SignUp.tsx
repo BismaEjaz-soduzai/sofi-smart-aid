@@ -35,17 +35,17 @@ export default function SignUp() {
     e.preventDefault();
     if (!validate()) return;
     setLoading(true);
-    const { error, needsConfirmation } = await signUpWithEmail(form.email, form.password, form.name);
+    const { error } = await signUpWithEmail(form.email, form.password, form.name);
     setLoading(false);
     if (error) {
-      toast.error(error);
+      if (/already registered|already exists|user already/i.test(error)) {
+        toast.error("Account already exists. Please sign in instead.");
+      } else {
+        toast.error(error);
+      }
       return;
     }
-    if (needsConfirmation) {
-      setConfirmationEmail(form.email);
-      return;
-    }
-    toast.success("Account created successfully!");
+    toast.success("Account created! Welcome to SOFI.");
     navigate("/dashboard");
   };
 
