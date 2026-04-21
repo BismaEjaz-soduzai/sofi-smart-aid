@@ -189,12 +189,44 @@ export default function StudyAnalytics() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard icon={CheckCircle2} label="Tasks Completed" value={stats.completedCount} sub={`of ${stats.total} total`} />
         <StatCard icon={TrendingUp} label="Completion Rate" value={`${Math.round(stats.completionRate)}%`} />
         <StatCard icon={Flame} label="Day Streak" value={stats.streak} sub="consecutive days" />
-        <StatCard icon={AlertTriangle} label="Overdue Tasks" value={stats.overdue} destructive={stats.overdue > 0} />
+        <StatCard
+          icon={Clock}
+          label="Focus Today"
+          value={`${Math.floor(stats.todayFocusMin / 60)}h ${stats.todayFocusMin % 60}m`}
+          sub={`${(stats.totalFocusMinWeek / 60).toFixed(1)}h this week`}
+        />
+        <StatCard icon={AlertTriangle} label="Overdue" value={stats.overdue} destructive={stats.overdue > 0} />
       </div>
+
+      {/* Focus time per day chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center justify-between">
+            <span>Focus Time · Last 7 Days</span>
+            <span className="text-xs font-normal text-muted-foreground">
+              Total: {(stats.totalFocusMinWeek / 60).toFixed(1)}h
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={stats.focusByDay}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="day" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} unit="m" />
+              <Tooltip
+                contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+                formatter={(v: any) => [`${v} min (${(Number(v) / 60).toFixed(2)}h)`, "Focus"]}
+              />
+              <Bar dataKey="Minutes" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
 
       {/* Charts row */}
       <div className="grid lg:grid-cols-2 gap-4">
