@@ -12,6 +12,7 @@ export interface RoomLink {
   url: string;
   note: string | null;
   created_at: string;
+  author_name?: string | null;
 }
 
 function getSafeUrl(raw: string): URL | null {
@@ -79,7 +80,17 @@ export function useRoomLinks(roomId: string | undefined | null) {
         .eq("room_id", roomId)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data || []) as RoomLink[];
+      const rows = (data || []) as RoomLink[];
+      const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
+      if (userIds.length === 0) return rows;
+      const { data: profiles } = await (supabase as any)
+        .from("profiles")
+        .select("user_id, display_name")
+        .in("user_id", userIds);
+      const nameMap = new Map<string, string>(
+        (profiles || []).map((p: { user_id: string; display_name: string | null }) => [p.user_id, p.display_name || "Member"]),
+      );
+      return rows.map((r) => ({ ...r, author_name: nameMap.get(r.user_id) || "Member" }));
     },
     enabled: !!roomId && !!user,
   });

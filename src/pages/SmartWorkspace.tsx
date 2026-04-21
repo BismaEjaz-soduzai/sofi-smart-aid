@@ -20,7 +20,8 @@ import { useRoomRecordings } from "@/hooks/useRoomRecordings";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
 import ReactMarkdown from "react-markdown";
@@ -695,6 +696,7 @@ export default function SmartWorkspace() {
   const { links, addLink, removeLink, isLoading: linksLoading } = useRoomLinks(activeRoomId);
   const [newLinkUrl, setNewLinkUrl] = useState("");
   const [newLinkTitle, setNewLinkTitle] = useState("");
+  const [previewLink, setPreviewLink] = useState<{ url: string; embed: string; title: string } | null>(null);
 
   const handlePinLink = async () => {
     if (!activeRoomId) {
@@ -1248,8 +1250,8 @@ export default function SmartWorkspace() {
                 <div className="space-y-3">{[1, 2].map((i) => <div key={i} className="h-20 rounded-xl bg-muted/50 animate-pulse" />)}</div>
               ) : links.length === 0 ? (
                 <div className="text-center py-12">
-                  <p className="text-sm font-medium text-foreground">Nothing pinned yet</p>
-                  <p className="text-xs text-muted-foreground mt-1">Paste a website or YouTube link above to pin it for the room</p>
+                  <p className="text-sm font-medium text-foreground">No links pinned yet</p>
+                  <p className="text-xs text-muted-foreground mt-1">Paste a website or YouTube URL to share it with the room.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1262,23 +1264,19 @@ export default function SmartWorkspace() {
                     })();
                     const favicon = `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`;
                     const canDelete = link.user_id === user?.id;
+                    const relTime = (() => {
+                      try { return formatDistanceToNow(new Date(link.created_at), { addSuffix: true }); }
+                      catch { return ""; }
+                    })();
 
-                    return (
-                      <motion.a
-                        key={link.id}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        href={link.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block bg-card border border-border rounded-xl overflow-hidden hover:border-primary/30 hover:bg-primary/5 transition-all"
-                      >
+                    const cardInner = (
+                      <>
                         {ytThumb ? (
                           <div className="relative aspect-video bg-muted overflow-hidden">
                             <img src={ytThumb} alt={link.title || hostname} className="w-full h-full object-cover" loading="lazy" />
                             <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                              <div className="w-10 h-10 rounded-full bg-background/90 text-foreground flex items-center justify-center shadow-sm">
-                                <Play className="w-4 h-4 ml-0.5" />
+                              <div className="w-12 h-12 rounded-full bg-background/95 text-foreground flex items-center justify-center shadow-md">
+                                <Play className="w-5 h-5 ml-0.5" />
                               </div>
                             </div>
                           </div>
@@ -1314,12 +1312,41 @@ export default function SmartWorkspace() {
                             )}
                           </div>
                           <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                            <span>{format(new Date(link.created_at), "MMM d, yyyy · h:mm a")}</span>
-                            <span className="inline-flex items-center gap-1 text-primary">
+                            <span className="truncate">Pinned by {link.author_name || "Member"} · {relTime}</span>
+                            <span className="inline-flex items-center gap-1 text-primary flex-shrink-0">
                               <ExternalLink className="w-3 h-3" /> Open
                             </span>
                           </div>
                         </div>
+                      </>
+                    );
+
+                    if (ytEmbed) {
+                      return (
+                        <motion.button
+                          key={link.id}
+                          type="button"
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          onClick={() => setPreviewLink({ url: link.url, embed: ytEmbed, title: link.title || hostname })}
+                          className="text-left block bg-card border border-border rounded-xl overflow-hidden hover:border-primary/30 hover:bg-primary/5 transition-all"
+                        >
+                          {cardInner}
+                        </motion.button>
+                      );
+                    }
+
+                    return (
+                      <motion.a
+                        key={link.id}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block bg-card border border-border rounded-xl overflow-hidden hover:border-primary/30 hover:bg-primary/5 transition-all"
+                      >
+                        {cardInner}
                       </motion.a>
                     );
                   })}
@@ -1329,6 +1356,37 @@ export default function SmartWorkspace() {
           )}
         </div>
       )}
+
+      {/* YouTube inline preview modal */}
+      <Dialog open={!!previewLink} onOpenChange={(open) => !open && setPreviewLink(null)}>
+        <DialogContent className="max-w-3xl p-0 overflow-hidden">
+          {previewLink && (
+            <div className="space-y-0">
+              <div className="aspect-video bg-black">
+                <iframe
+                  src={previewLink.embed}
+                  title={previewLink.title}
+                  className="w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3 p-4 border-t border-border">
+                <p className="text-sm font-medium text-foreground truncate">{previewLink.title}</p>
+                <a
+                  href={previewLink.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity flex-shrink-0"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Open on YouTube
+                </a>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
 
       <AnimatePresence>
         {viewingFile && (
