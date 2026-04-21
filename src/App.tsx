@@ -8,6 +8,7 @@ import { FocusTimerProvider } from "@/contexts/FocusTimerContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "@/components/AppLayout";
 import { DeadlineNotifier } from "@/components/DeadlineNotifier";
+import { NoteReminderNotifier } from "@/components/NoteReminderNotifier";
 import FloatingFocusTimer from "@/components/FloatingFocusTimer";
 import Onboarding from "@/pages/Onboarding";
 import Landing from "@/pages/Landing";
@@ -44,7 +45,7 @@ const App = () => (
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-                <Route path="/dashboard" element={<><DeadlineNotifier /><Dashboard /></>} />
+                <Route path="/dashboard" element={<><DeadlineNotifier /><NoteReminderNotifier /><Dashboard /></>} />
                 <Route path="/organizer" element={<Organizer />} />
                 <Route path="/tasks" element={<Navigate to="/organizer" replace />} />
                 <Route path="/notes" element={<Navigate to="/organizer" replace />} />
