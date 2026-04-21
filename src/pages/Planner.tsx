@@ -444,7 +444,7 @@ function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
 }
 
 // ─── Plan Detail (Professional Redesign) ────────────────────────────
-function PlanDetail({ plan, onBack, onDelete, onUpdate }: { plan: Plan; onBack: () => void; onDelete: () => void; onUpdate: (updates: Partial<Plan>) => Promise<void> }) {
+function PlanDetail({ plan, navigate, onBack, onDelete, onUpdate }: { plan: Plan; navigate: ReturnType<typeof useNavigate>; onBack: () => void; onDelete: () => void; onUpdate: (updates: Partial<Plan>) => Promise<void> }) {
   const { data: sessions = [] } = usePlanSessions(plan.id);
   const createSession = useCreateSession();
   const toggleSession = useToggleSession();
@@ -545,6 +545,16 @@ function PlanDetail({ plan, onBack, onDelete, onUpdate }: { plan: Plan; onBack: 
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
         <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => {
+              const remaining = sessions.filter((s) => !s.is_completed).length;
+              const prompt = `Review my study plan: ${plan.title}, ${pct}% complete, ${remaining} remaining sessions. Suggest improvements and what I should focus on next.`;
+              navigate("/assistant", { state: { prompt } });
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+          >
+            <Brain className="w-3.5 h-3.5" /> Ask SOFI to improve this plan
+          </button>
           <button onClick={() => setReplanOpen((v) => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-info/10 text-info text-xs font-medium hover:bg-info/20 transition-colors">
             <Wand2 className="w-3.5 h-3.5" /> {replanOpen ? "Close Replan" : "Replan with AI"}
           </button>
@@ -727,19 +737,31 @@ function PlanDetail({ plan, onBack, onDelete, onUpdate }: { plan: Plan; onBack: 
 
                 return (
                   <motion.div key={s.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.03 }}
-                    className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${s.is_completed ? "bg-muted/20 border-border" : sessionOverdue ? "bg-destructive/5 border-destructive/20" : sessionToday ? "bg-primary/5 border-primary/20" : "bg-card border-border hover:border-primary/20"}`}>
-                    <button onClick={() => toggleSession.mutate({ id: s.id, is_completed: !s.is_completed, plan_id: plan.id })}
+                    className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${s.is_completed ? "bg-muted/20 border-border" : sessionOverdue ? "bg-destructive/5 border-destructive/30" : sessionToday ? "bg-primary/5 border-primary/30" : "bg-card border-border hover:border-primary/20"}`}>
+                    <button onClick={async () => {
+                      const willComplete = !s.is_completed;
+                      await toggleSession.mutateAsync({ id: s.id, is_completed: willComplete, plan_id: plan.id });
+                      if (willComplete) toast.success("Milestone complete! 🎉");
+                    }}
                       className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${s.is_completed ? "bg-primary border-primary" : "border-muted-foreground/30 hover:border-primary"}`}>
                       {s.is_completed && <CheckCircle2 className="w-3.5 h-3.5 text-primary-foreground" />}
                     </button>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium ${s.is_completed ? "text-muted-foreground line-through" : "text-foreground"}`}>{s.title}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {s.date && <span className="text-[10px] text-muted-foreground">{format(parseISO(s.date), "MMM d, yyyy")}</span>}
-                        {sessionOverdue && <span className="text-[10px] font-semibold text-destructive">Overdue</span>}
-                        {sessionToday && <span className="text-[10px] font-semibold text-primary">Today</span>}
-                        {sessionTomorrow && <span className="text-[10px] font-semibold text-warning">Tomorrow</span>}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className={`text-sm font-medium ${s.is_completed ? "text-muted-foreground line-through" : "text-foreground"}`}>{s.title}</p>
+                        {!s.is_completed && sessionToday && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary text-primary-foreground animate-pulse">TODAY</span>
+                        )}
+                        {!s.is_completed && sessionTomorrow && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-warning text-warning-foreground">TOMORROW</span>
+                        )}
+                        {sessionOverdue && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-destructive text-destructive-foreground flex items-center gap-1">
+                            <AlertCircle className="w-2.5 h-2.5" /> OVERDUE
+                          </span>
+                        )}
                       </div>
+                      {s.date && <span className="text-[10px] text-muted-foreground">{format(parseISO(s.date), "MMM d, yyyy")}</span>}
                     </div>
                     <div className={`w-2 h-2 rounded-full flex-shrink-0 ${s.is_completed ? "bg-success" : sessionOverdue ? "bg-destructive" : sessionToday ? "bg-primary" : "bg-muted-foreground/20"}`} />
                   </motion.div>
