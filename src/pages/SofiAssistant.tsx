@@ -6,6 +6,7 @@ import {
   Calendar, BookOpen, Lightbulb, PenLine, Languages, Zap,
   Presentation, GraduationCap, MessageCircle, Mic, MicOff,
   Volume2, VolumeX, Square, Brain, Upload, FileText, X, Paperclip,
+  FolderOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
@@ -13,6 +14,8 @@ import ReactMarkdown from "react-markdown";
 import VoiceMode from "@/components/sofi/VoiceMode";
 import AdaptiveInsights from "@/components/sofi/AdaptiveInsights";
 import { useFocusTimer } from "@/contexts/FocusTimerContext";
+import { useStudyFiles, type StudyFile } from "@/hooks/useStudyFiles";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Message {
   id: string;
