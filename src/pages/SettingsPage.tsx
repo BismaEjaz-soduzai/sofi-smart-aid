@@ -140,8 +140,37 @@ export default function SettingsPage() {
     toast.info("Account deletion requires confirmation. Contact support.");
   };
 
-  const handleExportData = () => {
-    toast.success("Data export started. You'll be notified when ready.");
+  const handleExportData = async () => {
+    try {
+      toast.info("Preparing your data export...");
+      const [tasksRes, notesRes, plansRes] = await Promise.all([
+        supabase.from("tasks").select("*"),
+        supabase.from("notes").select("*"),
+        supabase.from("plans").select("*"),
+      ]);
+      if (tasksRes.error || notesRes.error || plansRes.error) {
+        throw new Error("Failed to fetch data");
+      }
+      const data = {
+        exportDate: new Date().toISOString(),
+        user: { id: user?.id, email: user?.email },
+        tasks: tasksRes.data || [],
+        notes: notesRes.data || [],
+        plans: plansRes.data || [],
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sofi-data-export-${new Date().toISOString().split("T")[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Data exported successfully!");
+    } catch (e: any) {
+      toast.error(e.message || "Export failed");
+    }
   };
 
   const initials = (displayName || user?.email?.split("@")[0] || "U")
