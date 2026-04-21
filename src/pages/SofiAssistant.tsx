@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Send, Sparkles, Loader2, Timer, Play, Pause, RotateCcw,
@@ -48,8 +49,25 @@ const SUGGESTED_PROMPTS = [
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/study-chat`;
 
 export default function SofiAssistant() {
-  const [section, setSection] = useState<Section>("chat");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialSection = (searchParams.get("section") as Section) || "chat";
+  const [section, setSection] = useState<Section>(initialSection);
   const [sharedPrompt, setSharedPrompt] = useState("");
+
+  useEffect(() => {
+    const s = searchParams.get("section") as Section | null;
+    if (s && s !== section) setSection(s);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const changeSection = (s: Section) => {
+    setSection(s);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("section", s);
+      return next;
+    }, { replace: true });
+  };
 
   const handleAskSofi = (prompt: string) => {
     setSharedPrompt(prompt);
