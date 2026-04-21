@@ -12,6 +12,7 @@ export interface RoomLink {
   url: string;
   note: string | null;
   created_at: string;
+  author_name?: string | null;
 }
 
 function getSafeUrl(raw: string): URL | null {
