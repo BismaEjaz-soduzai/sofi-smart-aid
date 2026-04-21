@@ -53,11 +53,11 @@ export function AppHeader() {
         <h2 className="text-sm font-semibold text-foreground tracking-tight truncate">{pageTitle}</h2>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <GlobalSearch />
         <GlobalVoiceButton />
         <NotificationCenter />
-        <div className="w-px h-5 bg-border mx-1" />
+        <div className="w-px h-5 bg-border mx-1.5" />
 
         <div ref={profileRef} className="relative">
           <button onClick={() => setProfileOpen(!profileOpen)} className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-muted/50 transition-colors">

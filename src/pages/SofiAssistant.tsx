@@ -6,6 +6,7 @@ import {
   Calendar, BookOpen, Lightbulb, PenLine, Languages, Zap,
   Presentation, GraduationCap, MessageCircle, Mic, MicOff,
   Volume2, VolumeX, Square, Brain, Upload, FileText, X, Paperclip,
+  FolderOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
@@ -13,6 +14,8 @@ import ReactMarkdown from "react-markdown";
 import VoiceMode from "@/components/sofi/VoiceMode";
 import AdaptiveInsights from "@/components/sofi/AdaptiveInsights";
 import { useFocusTimer } from "@/contexts/FocusTimerContext";
+import { useStudyFiles, type StudyFile } from "@/hooks/useStudyFiles";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Message {
   id: string;
@@ -233,13 +236,53 @@ function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: strin
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [attachedFile, setAttachedFile] = useState<{ name: string; content: string } | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const { files: workspaceFiles } = useStudyFiles();
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setShowWorkspacePicker(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const attachWorkspaceFile = async (file: StudyFile) => {
+    setShowWorkspacePicker(false);
+    setIsExtracting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-file-text`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ filePath: file.file_path, fileName: file.file_name }),
+        },
+      );
+      if (!resp.ok) throw new Error("Could not read file");
+      const data = await resp.json();
+      const text = (data.text || "").slice(0, 15000);
+      if (!text.trim()) throw new Error("No text extracted");
+      setAttachedFile({ name: file.file_name, content: text });
+      toast.success(`Loaded: ${file.file_name}`);
+    } catch (e: any) {
+      toast.error(e?.message || "Could not open file");
+    } finally {
+      setIsExtracting(false);
+    }
+  };
 
   useEffect(() => {
     if (initialPrompt) {
@@ -439,9 +482,33 @@ function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: strin
       <div className="p-4 border-t border-border flex-shrink-0">
         <div className="flex items-end gap-2 bg-card border border-border rounded-xl px-4 py-2 max-w-3xl mx-auto">
           <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".txt,.md,.csv,.text,.pdf,.docx,.doc,.json,.xml,.html,.py,.js,.ts" className="hidden" />
-          <button onClick={() => fileInputRef.current?.click()} disabled={isExtracting} className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-all disabled:opacity-40" title="Attach PDF, DOCX, TXT, or code files">
+          <button onClick={() => fileInputRef.current?.click()} disabled={isExtracting} className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-all disabled:opacity-40" title="Attach a new file from your device">
             <Paperclip className="w-3.5 h-3.5" />
           </button>
+          <div ref={pickerRef} className="relative">
+            <button onClick={() => setShowWorkspacePicker((s) => !s)} disabled={isExtracting} className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-all disabled:opacity-40" title="Open a file from your Smart Workspace">
+              <FolderOpen className="w-3.5 h-3.5" />
+            </button>
+            {showWorkspacePicker && (
+              <div className="absolute bottom-full left-0 mb-2 w-72 max-h-72 overflow-y-auto rounded-xl border border-border bg-card shadow-xl z-50 animate-fade-in">
+                <div className="px-3 py-2 border-b border-border sticky top-0 bg-card">
+                  <p className="text-xs font-semibold text-foreground">Workspace files</p>
+                  <p className="text-[10px] text-muted-foreground">Click a file to load it for AI analysis</p>
+                </div>
+                {workspaceFiles.length === 0 ? (
+                  <p className="px-3 py-4 text-xs text-muted-foreground text-center">No files yet. Upload some in Smart Workspace.</p>
+                ) : (
+                  workspaceFiles.map((f) => (
+                    <button key={f.id} onClick={() => attachWorkspaceFile(f)} className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors border-b border-border/40 last:border-0">
+                      <FileText className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                      <span className="text-xs text-foreground truncate flex-1">{f.file_name}</span>
+                      <span className="text-[10px] text-muted-foreground uppercase">{f.file_type}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
           <button onClick={toggleListening} className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${isListening ? "bg-destructive text-destructive-foreground animate-pulse" : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"}`}>
             {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
           </button>
