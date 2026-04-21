@@ -396,9 +396,16 @@ RULES YOU MUST FOLLOW:
     if (!aiOutput.trim()) { toast.error("Generate a plan first"); return; }
     const title = (aiPlanTitle.trim() || aiPrompt.trim().slice(0, 60) || "Untitled AI Plan");
     try {
-      await createPlan.mutateAsync({ title, goal: aiPrompt, category: "study", emoji: "🧠", color_tag: "purple", description: aiOutput, source_type: "ai" });
-      toast.success("Plan saved! Open it to view the full plan.");
-      setView("overview"); setAiPrompt(""); setAiOutput(""); setAiPlanTitle("");
+      const created = await createPlan.mutateAsync({ title, goal: aiPrompt, category: form.category || "study", emoji: form.emoji || "🧠", color_tag: form.color_tag || "purple", start_date: form.start_date || null, end_date: form.end_date || null, description: aiOutput, source_type: "ai" });
+      // Auto-create sessions parsed from the AI output
+      const parsed = parseAiSessions(aiOutput, created.start_date);
+      let createdCount = 0;
+      for (const s of parsed) {
+        try { await createSession.mutateAsync({ plan_id: created.id, title: s.title, date: s.date }); createdCount++; }
+        catch {}
+      }
+      toast.success(createdCount > 0 ? `Plan saved with ${createdCount} sessions created automatically` : "Plan saved!");
+      setView("overview"); setAiPrompt(""); setAiOutput(""); setAiPlanTitle(""); resetForm();
     } catch { toast.error("Failed to save plan"); }
   };
 
@@ -406,8 +413,14 @@ RULES YOU MUST FOLLOW:
     if (!aiOutput.trim()) { toast.error("Generate a plan first"); return; }
     if (!form.title.trim()) { toast.error("Add a title before saving"); return; }
     try {
-      await createPlan.mutateAsync({ ...form, description: aiOutput, source_type: "ai" });
-      toast.success("Plan saved! Open it to view the full plan.");
+      const created = await createPlan.mutateAsync({ ...form, description: aiOutput, source_type: "ai" });
+      const parsed = parseAiSessions(aiOutput, created.start_date);
+      let createdCount = 0;
+      for (const s of parsed) {
+        try { await createSession.mutateAsync({ plan_id: created.id, title: s.title, date: s.date }); createdCount++; }
+        catch {}
+      }
+      toast.success(createdCount > 0 ? `Plan saved with ${createdCount} sessions created automatically` : "Plan saved!");
       setView("overview"); resetForm(); setAiOutput(""); setAiPrompt("");
     } catch { toast.error("Failed to save plan"); }
   };
