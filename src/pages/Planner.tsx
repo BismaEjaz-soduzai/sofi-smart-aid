@@ -1317,74 +1317,21 @@ function PlanDetail({ plan, navigate, onBack, onDelete, onUpdate }: { plan: Plan
           )}
 
           {/* Sessions */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Sessions / Milestones</p>
-              <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"><Plus className="w-3 h-3" /> Add</button>
-            </div>
-            <AnimatePresence>
-              {showAdd && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-3">
-                  <div className="glass-card p-4 space-y-3">
-                    <input value={sessionForm.title} onChange={(e) => setSessionForm({ ...sessionForm, title: e.target.value })} placeholder="Session title" className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none" />
-                    <div className="flex gap-2">
-                      <input type="date" value={sessionForm.date} onChange={(e) => setSessionForm({ ...sessionForm, date: e.target.value })} className="flex-1 bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none" />
-                      <button onClick={addSession} disabled={!sessionForm.title.trim()} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-40">Add</button>
-                      <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-lg bg-muted text-muted-foreground text-sm font-medium">Cancel</button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <div className="space-y-2">
-              {sessions.map((s, idx) => {
-                const sessionDate = s.date ? parseISO(s.date) : null;
-                const sessionOverdue = sessionDate && isPast(sessionDate) && !isToday(sessionDate) && !s.is_completed;
-                const sessionToday = sessionDate && isToday(sessionDate);
-                const sessionTomorrow = sessionDate && isTomorrow(sessionDate);
-
-                return (
-                  <motion.div key={s.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.03 }}
-                    className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${s.is_completed ? "bg-muted/20 border-border" : sessionOverdue ? "bg-destructive/5 border-destructive/30" : sessionToday ? "bg-primary/5 border-primary/30" : "bg-card border-border hover:border-primary/20"}`}>
-                    <button onClick={async () => {
-                      const willComplete = !s.is_completed;
-                      await toggleSession.mutateAsync({ id: s.id, is_completed: willComplete, plan_id: plan.id });
-                      if (willComplete) toast.success("Milestone complete! 🎉");
-                    }}
-                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${s.is_completed ? "bg-primary border-primary" : "border-muted-foreground/30 hover:border-primary"}`}>
-                      {s.is_completed && <CheckCircle2 className="w-3.5 h-3.5 text-primary-foreground" />}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className={`text-sm font-medium ${s.is_completed ? "text-muted-foreground line-through" : "text-foreground"}`}>{s.title}</p>
-                        {!s.is_completed && sessionToday && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary text-primary-foreground animate-pulse">TODAY</span>
-                        )}
-                        {!s.is_completed && sessionTomorrow && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-warning text-warning-foreground">TOMORROW</span>
-                        )}
-                        {sessionOverdue && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-destructive text-destructive-foreground flex items-center gap-1">
-                            <AlertCircle className="w-2.5 h-2.5" /> OVERDUE
-                          </span>
-                        )}
-                      </div>
-                      {s.date && <span className="text-[10px] text-muted-foreground">{format(parseISO(s.date), "MMM d, yyyy")}</span>}
-                    </div>
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${s.is_completed ? "bg-success" : sessionOverdue ? "bg-destructive" : sessionToday ? "bg-primary" : "bg-muted-foreground/20"}`} />
-                  </motion.div>
-                );
-              })}
-              {sessions.length === 0 && (
-                <div className="text-center py-10 bg-muted/20 rounded-xl border border-dashed border-border">
-                  <Target className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">No sessions yet</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Add milestones to track your progress</p>
-                </div>
-              )}
-            </div>
-          </div>
+          <SessionsSection
+            plan={plan}
+            sessions={sessions as any}
+            showAdd={showAdd}
+            setShowAdd={setShowAdd}
+            sessionForm={sessionForm}
+            setSessionForm={setSessionForm}
+            addSession={addSession}
+            onToggle={async (s) => {
+              const willComplete = !s.is_completed;
+              await toggleSession.mutateAsync({ id: s.id, is_completed: willComplete, plan_id: plan.id });
+              if (willComplete) toast.success("Milestone complete! 🎉");
+            }}
+            onQuickAddDate={(date) => { setSessionForm({ title: "", date, note: "" }); setShowAdd(true); }}
+          />
         </div>
       </div>
     </motion.div>
