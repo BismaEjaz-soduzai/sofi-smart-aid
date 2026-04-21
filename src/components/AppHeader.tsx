@@ -15,6 +15,7 @@ const pageTitles: Record<string, string> = {
   "/settings": "Settings",
   "/profile": "Profile",
   "/chat": "Study Chat",
+  "/analytics": "Study Analytics",
 };
 
 export function AppHeader() {
