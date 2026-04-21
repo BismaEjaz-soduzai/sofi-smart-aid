@@ -578,20 +578,29 @@ export default function SmartWorkspace() {
 
       const type = file.file_type.toUpperCase();
 
-      // PDFs, TXT, images — browser renders natively
+      if (["DOCX", "DOC", "PPT", "PPTX"].includes(type)) {
+        const previewText = await fetchFileContent(file);
+        setViewingFile({
+          url,
+          name: file.file_name,
+          type,
+          previewText,
+          previewMode: "document",
+        });
+        return;
+      }
+
       if (["PDF", "TXT"].includes(type)) {
-        window.open(url, "_blank", "noopener,noreferrer");
+        setViewingFile({
+          url,
+          name: file.file_name,
+          type,
+          previewText: null,
+          previewMode: "native",
+        });
         return;
       }
 
-      // Office docs — render the ACTUAL document (not extracted text) via Office Online viewer
-      if (["DOCX", "DOC", "PPT", "PPTX", "XLS", "XLSX"].includes(type)) {
-        const officeUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}`;
-        window.open(officeUrl, "_blank", "noopener,noreferrer");
-        return;
-      }
-
-      // Fallback — open directly
       window.open(url, "_blank", "noopener,noreferrer");
     } catch (err) {
       console.error("Open file error", err);
