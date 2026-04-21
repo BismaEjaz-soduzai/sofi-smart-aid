@@ -1131,6 +1131,7 @@ export default function SmartWorkspace() {
                 >
                   {uploadRoomFile.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
                 </button>
+                <VoiceMicButton onTranscript={(text) => setChatInput((prev) => (prev ? `${prev} ${text}` : text))} />
                 <input
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
@@ -1173,35 +1174,25 @@ export default function SmartWorkspace() {
                   <div className="max-w-4xl mx-auto space-y-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm font-medium text-foreground">Document preview</p>
-                        <p className="text-xs text-muted-foreground mt-1">Readable in-app preview for DOCX and PPTX files</p>
+                        <p className="text-sm font-medium text-foreground">In-app document preview</p>
+                        <p className="text-xs text-muted-foreground mt-1">Headings, lists, and slide/page separators are preserved.</p>
                       </div>
                       {viewingFile.url && (
                         <a href={viewingFile.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
-                          <Eye className="w-3.5 h-3.5" /> Original file
+                          <ExternalLink className="w-3.5 h-3.5" /> Open in new tab
                         </a>
                       )}
                     </div>
-                    <article className="rounded-xl border border-border bg-background p-5 shadow-sm">
+                    <article className="rounded-xl border border-border bg-background p-6 shadow-sm">
                       {viewingFile.previewText ? (
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                          {viewingFile.previewText
-                            .split(/\n{2,}/)
-                            .filter(Boolean)
-                            .map((block, index) => {
-                              const trimmed = block.trim();
-                              const isHeading = trimmed.length < 80 && !trimmed.includes(":") && trimmed === trimmed.toUpperCase();
-                              if (isHeading) {
-                                return <h3 key={index}>{trimmed}</h3>;
-                              }
-                              return <p key={index} className="whitespace-pre-wrap leading-7 text-foreground">{trimmed}</p>;
-                            })}
+                        <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:text-foreground prose-headings:font-bold prose-h1:text-2xl prose-h2:text-xl prose-h2:border-b prose-h2:border-border prose-h2:pb-2 prose-h2:mt-8 prose-h3:text-base prose-p:leading-relaxed prose-p:text-foreground prose-li:text-foreground prose-strong:text-foreground prose-hr:my-8 prose-hr:border-primary/20">
+                          <ReactMarkdown>{viewingFile.previewText}</ReactMarkdown>
                         </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center py-16 text-center">
-                          <FileText className="w-8 h-8 text-muted-foreground mb-3" />
-                          <p className="text-sm font-medium text-foreground">Preview text is still being prepared</p>
-                          <p className="text-xs text-muted-foreground mt-1">Use Original file to open the uploaded document directly.</p>
+                          <Loader2 className="w-6 h-6 text-muted-foreground mb-3 animate-spin" />
+                          <p className="text-sm font-medium text-foreground">Preparing preview...</p>
+                          <p className="text-xs text-muted-foreground mt-1">Use "Open in new tab" to view the original file directly.</p>
                         </div>
                       )}
                     </article>
