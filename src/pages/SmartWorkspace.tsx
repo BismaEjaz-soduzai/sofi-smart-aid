@@ -1191,6 +1191,12 @@ export default function SmartWorkspace() {
                   <input
                     value={newLinkUrl}
                     onChange={(e) => setNewLinkUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handlePinLink();
+                      }
+                    }}
                     placeholder="Paste a YouTube or web link..."
                     className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
                   />
@@ -1199,17 +1205,19 @@ export default function SmartWorkspace() {
                   <input
                     value={newLinkTitle}
                     onChange={(e) => setNewLinkTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handlePinLink();
+                      }
+                    }}
                     placeholder="Title (optional)"
                     className="flex-1 bg-muted/50 border border-border rounded-lg px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
                   />
                   <button
-                    onClick={async () => {
-                      if (!newLinkUrl.trim()) return;
-                      await addLink.mutateAsync({ url: newLinkUrl, title: newLinkTitle });
-                      setNewLinkUrl("");
-                      setNewLinkTitle("");
-                    }}
-                    disabled={!newLinkUrl.trim() || addLink.isPending}
+                    type="button"
+                    onClick={handlePinLink}
+                    disabled={addLink.isPending}
                     className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
                   >
                     {addLink.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />} Pin
