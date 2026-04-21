@@ -696,6 +696,7 @@ export default function SmartWorkspace() {
   const { links, addLink, removeLink, isLoading: linksLoading } = useRoomLinks(activeRoomId);
   const [newLinkUrl, setNewLinkUrl] = useState("");
   const [newLinkTitle, setNewLinkTitle] = useState("");
+  const [previewLink, setPreviewLink] = useState<{ url: string; embed: string; title: string } | null>(null);
 
   const handlePinLink = async () => {
     if (!activeRoomId) {
