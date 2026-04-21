@@ -68,6 +68,7 @@ export default function Planner() {
   const createPlan = useCreatePlan();
   const deletePlan = useDeletePlan();
   const updatePlan = useUpdatePlan();
+  const activity = useDailyActivity(7);
   const navigate = useNavigate();
   const notifiedRef = useRef<Set<string>>(new Set());
   const [view, setView] = useState<View>("overview");
