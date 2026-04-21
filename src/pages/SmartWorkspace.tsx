@@ -1,12 +1,18 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload, FileText, File, Presentation, FileType, Search,
   Trash2, Sparkles, BookOpen, ClipboardList, HelpCircle, LayoutList, X,
   GraduationCap, Lightbulb, Loader2, Send, Download, Eye,
   FolderPlus, Folder, FolderOpen, ArrowLeft, MoreHorizontal,
+  Phone, Video, Paperclip, Copy, UserPlus, MessageSquare,
 } from "lucide-react";
 import { useStudyFiles, useWorkspaceRooms, StudyFile } from "@/hooks/useStudyFiles";
+import { useRoomMessages, useSendRoomMessage, useUploadRoomFile } from "@/hooks/useRoomChat";
+import { useCallSignal } from "@/hooks/useCallSignal";
+import CallBar from "@/components/chat/CallBar";
+import { useAuth } from "@/contexts/AuthContext";
+import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -340,7 +346,7 @@ Topic: ` },
 const ACCEPTED = ".pdf,.docx,.doc,.ppt,.pptx,.txt";
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/study-chat`;
 
-type Tab = "uploads" | "ai-tools" | "generated";
+type Tab = "uploads" | "ai-tools" | "generated" | "chat";
 
 interface GeneratedItem {
   id: string;
@@ -399,9 +405,121 @@ async function getSignedUrl(file: StudyFile): Promise<string | null> {
 }
 
 export default function SmartWorkspace() {
-  const { rooms, createRoom, deleteRoom } = useWorkspaceRooms();
+  const { user } = useAuth();
+  const profileQuery = useProfile();
+  const myName = profileQuery.data?.display_name || user?.email?.split("@")[0] || "User";
+  const { rooms, createRoom, deleteRoom, joinRoomByCode } = useWorkspaceRooms();
   const [activeRoomId, setActiveRoomId] = useState<string | undefined>(undefined);
   const activeRoom = rooms.find((r) => r.id === activeRoomId);
+
+  // ===== Room chat / call state =====
+  const roomCall = useCallSignal(activeRoomId || "no-room");
+  const { messages: roomMessages } = useRoomMessages(activeRoomId);
+  const sendRoomMessage = useSendRoomMessage();
+  const uploadRoomFile = useUploadRoomFile();
+  const [chatInput, setChatInput] = useState("");
+  const [callElapsed, setCallElapsed] = useState(0);
+  const [showJoinInput, setShowJoinInput] = useState(false);
+  const [joinCode, setJoinCode] = useState("");
+  const chatFileRef = useRef<HTMLInputElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!roomCall.activeCall) { setCallElapsed(0); return; }
+    const start = roomCall.activeCall.startedAt;
+    const tick = () => setCallElapsed(Math.floor((Date.now() - start) / 1000));
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [roomCall.activeCall]);
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [roomMessages.length]);
+
+  const handleStartRoomCall = (isVideo: boolean) => {
+    if (!activeRoomId) return;
+    roomCall.startCall(isVideo, myName, async (displayText, callUrl) => {
+      await sendRoomMessage.mutateAsync({
+        roomId: activeRoomId,
+        content: `${displayText}||CALL_URL:${callUrl}`,
+        senderName: myName,
+        messageType: "system",
+      });
+    });
+  };
+
+  const handleSaveRoomRecording = async (blob: Blob, filename: string) => {
+    if (!activeRoomId || !user) return;
+    const path = `${user.id}/recordings/${filename}`;
+    const { error } = await supabase.storage.from("study-files").upload(path, blob, { contentType: "video/webm" });
+    if (error) { toast.error("Recording upload failed"); return; }
+    const { data } = await supabase.storage.from("study-files").createSignedUrl(path, 60 * 60 * 24 * 365);
+    await sendRoomMessage.mutateAsync({
+      roomId: activeRoomId,
+      content: "Shared a recording",
+      senderName: myName,
+      messageType: "file",
+      fileName: filename,
+      fileUrl: data?.signedUrl || "",
+      fileSize: blob.size,
+    });
+    toast.success("Recording saved to chat");
+  };
+
+  const handleSendChat = async () => {
+    if (!chatInput.trim() || !activeRoomId) return;
+    const content = chatInput.trim();
+    setChatInput("");
+    await sendRoomMessage.mutateAsync({ roomId: activeRoomId, content, senderName: myName });
+  };
+
+  const handleChatFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !activeRoomId) return;
+    const result = await uploadRoomFile.mutateAsync(file);
+    await sendRoomMessage.mutateAsync({
+      roomId: activeRoomId,
+      content: `Shared ${file.name}`,
+      senderName: myName,
+      messageType: "file",
+      fileName: result.name,
+      fileUrl: result.url,
+      fileSize: result.size,
+    });
+  };
+
+  const handleQuickShare = async (file: StudyFile) => {
+    if (!activeRoomId) return;
+    const { data } = await supabase.storage.from("study-files").createSignedUrl(file.file_path, 60 * 60 * 24 * 365);
+    await sendRoomMessage.mutateAsync({
+      roomId: activeRoomId,
+      content: `Shared ${file.file_name}`,
+      senderName: myName,
+      messageType: "file",
+      fileName: file.file_name,
+      fileUrl: data?.signedUrl || "",
+      fileSize: file.file_size,
+    });
+  };
+
+  const handleCopyInvite = () => {
+    if (!activeRoom) return;
+    navigator.clipboard.writeText(activeRoom.invite_code).then(() => toast.success(`Code ${activeRoom.invite_code} copied`));
+  };
+
+  const handleJoinByCode = async () => {
+    try {
+      const room = await joinRoomByCode.mutateAsync(joinCode);
+      setActiveRoomId(room.id);
+      setShowJoinInput(false);
+      setJoinCode("");
+      toast.success(`Joined ${room.name}`);
+    } catch { /* error toast handled in hook */ }
+  };
 
   // Pass room filter: null = general (unassigned) files, specific ID = room files
   const { files, isLoading, uploadFile, deleteFile, moveFile } = useStudyFiles(activeRoomId === undefined ? null : activeRoomId);
@@ -536,31 +654,84 @@ export default function SmartWorkspace() {
     { key: "uploads", label: "Uploads" },
     { key: "ai-tools", label: "AI Tools" },
     { key: "generated", label: "Generated" },
+    { key: "chat", label: "Room Chat" },
   ];
 
   return (
     <div className="p-4 lg:p-6 max-w-5xl mx-auto space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
           {activeRoom ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button onClick={() => setActiveRoomId(undefined)} className="text-muted-foreground hover:text-foreground transition-colors"><ArrowLeft className="w-4 h-4" /></button>
               <span className="text-xl">{activeRoom.emoji}</span>
               <h1 className="text-xl font-bold text-foreground">{activeRoom.name}</h1>
+              <button
+                onClick={handleCopyInvite}
+                title="Click to copy invite code"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-primary/10 text-primary text-xs font-mono font-semibold hover:bg-primary/20 transition-colors"
+              >
+                <Copy className="w-3 h-3" /> {activeRoom.invite_code}
+              </button>
             </div>
           ) : (
-            <>
+            <div>
               <h1 className="text-xl font-bold text-foreground">Smart Workspace</h1>
               <p className="text-sm text-muted-foreground mt-0.5">Organize by subject, use AI tools, generate content</p>
-            </>
+            </div>
           )}
         </div>
         {!activeRoom && (
-          <button onClick={() => setShowCreateRoom(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity">
-            <FolderPlus className="w-3.5 h-3.5" /> New Room
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowJoinInput((v) => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-foreground text-xs font-medium hover:bg-muted/80 transition-colors">
+              <UserPlus className="w-3.5 h-3.5" /> Join
+            </button>
+            <button onClick={() => setShowCreateRoom(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity">
+              <FolderPlus className="w-3.5 h-3.5" /> New Room
+            </button>
+          </div>
         )}
       </div>
+
+      {/* Join by code */}
+      <AnimatePresence>
+        {showJoinInput && !activeRoom && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+            <div className="glass-card p-3 flex items-center gap-2">
+              <input
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                placeholder="Enter code (e.g. ABC-DEF)"
+                className="flex-1 bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring uppercase"
+                onKeyDown={(e) => { if (e.key === "Enter") handleJoinByCode(); }}
+              />
+              <button onClick={handleJoinByCode} disabled={!joinCode.trim() || joinRoomByCode.isPending} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity">
+                {joinRoomByCode.isPending ? "Joining..." : "Join"}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Active call bar */}
+      <AnimatePresence>
+        {activeRoom && roomCall.activeCall && (
+          <CallBar
+            callUrl={roomCall.activeCall.callUrl}
+            isVideo={roomCall.activeCall.isVideo}
+            startedBy={roomCall.activeCall.startedBy}
+            elapsed={callElapsed}
+            isRecording={roomCall.isRecording}
+            recordingTime={roomCall.recordingTime}
+            formatRecTime={roomCall.formatRecTime}
+            onReopen={() => roomCall.joinCall(roomCall.activeCall!.callUrl)}
+            onEnd={roomCall.endCall}
+            onStartRecording={() => roomCall.startRecording(handleSaveRoomRecording)}
+            onStopRecording={roomCall.stopRecording}
+          />
+        )}
+      </AnimatePresence>
+
 
       {/* Room creation modal */}
       <AnimatePresence>
@@ -800,7 +971,137 @@ export default function SmartWorkspace() {
         </div>
       )}
 
-      {/* File Viewer Modal */}
+      {/* TAB: Room Chat */}
+      {tab === "chat" && (
+        <div className="space-y-3">
+          {!activeRoom ? (
+            <div className="text-center py-16">
+              <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3"><MessageSquare className="w-6 h-6 text-muted-foreground" /></div>
+              <p className="text-sm font-medium text-foreground">Open a room to start chatting</p>
+              <p className="text-xs text-muted-foreground mt-1">Pick or create a subject room above</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={() => handleStartRoomCall(false)}
+                  disabled={!!roomCall.activeCall}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-success/10 text-success text-xs font-medium hover:bg-success/20 disabled:opacity-40 transition-colors"
+                >
+                  <Phone className="w-3.5 h-3.5" /> Voice
+                </button>
+                <button
+                  onClick={() => handleStartRoomCall(true)}
+                  disabled={!!roomCall.activeCall}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 disabled:opacity-40 transition-colors"
+                >
+                  <Video className="w-3.5 h-3.5" /> Video
+                </button>
+              </div>
+
+              <div ref={chatScrollRef} className="bg-card border border-border rounded-xl h-[420px] overflow-y-auto p-4 space-y-3">
+                {roomMessages.length === 0 ? (
+                  <div className="text-center text-xs text-muted-foreground pt-12">No messages yet — say hi 👋</div>
+                ) : (
+                  roomMessages.map((m) => {
+                    const mine = m.user_id === user?.id;
+                    if (m.message_type === "system") {
+                      const [displayText, callPart] = m.content.split("||CALL_URL:");
+                      const callUrl = callPart || null;
+                      return (
+                        <div key={m.id} className="flex items-center justify-center gap-2 py-1">
+                          <span className="text-[11px] text-muted-foreground bg-muted/60 rounded-full px-3 py-1">{displayText}</span>
+                          {callUrl && (
+                            <button
+                              onClick={() => roomCall.joinCall(callUrl)}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-success text-success-foreground text-[11px] font-semibold hover:opacity-90 transition-opacity"
+                            >
+                              📞 Join Call
+                            </button>
+                          )}
+                        </div>
+                      );
+                    }
+                    if (m.message_type === "file") {
+                      return (
+                        <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                          <div className={`max-w-[80%] rounded-xl p-3 border ${mine ? "bg-primary/10 border-primary/20" : "bg-muted/50 border-border"}`}>
+                            {!mine && <p className="text-[10px] font-semibold text-muted-foreground mb-1">{m.sender_name || "Member"}</p>}
+                            <div className="flex items-center gap-2">
+                              <FileText className="w-5 h-5 text-primary flex-shrink-0" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-medium text-foreground truncate">{m.file_name}</p>
+                                {m.file_size != null && <p className="text-[10px] text-muted-foreground">{formatSize(m.file_size)}</p>}
+                              </div>
+                              {m.file_url && (
+                                <a href={m.file_url} target="_blank" rel="noopener noreferrer" download={m.file_name || undefined} className="flex items-center gap-1 px-2 py-1 rounded-md bg-primary text-primary-foreground text-[10px] font-medium hover:opacity-90">
+                                  <Download className="w-3 h-3" /> Open
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                        <div className={`max-w-[75%] rounded-xl px-3 py-2 ${mine ? "bg-primary text-primary-foreground" : "bg-muted/60 text-foreground"}`}>
+                          {!mine && <p className="text-[10px] font-semibold opacity-70 mb-0.5">{m.sender_name || "Member"}</p>}
+                          <p className="text-sm whitespace-pre-wrap break-words">{m.content}</p>
+                          <p className={`text-[9px] mt-1 ${mine ? "opacity-70" : "text-muted-foreground"}`}>{format(new Date(m.created_at), "h:mm a")}</p>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {files.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-medium text-muted-foreground">Quick share:</span>
+                  {files.slice(0, 5).map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => handleQuickShare(f)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md bg-muted/60 text-muted-foreground hover:bg-primary/10 hover:text-primary text-[10px] transition-colors"
+                    >
+                      <FileText className="w-3 h-3" /> {f.file_name.length > 18 ? f.file_name.slice(0, 18) + "…" : f.file_name}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2">
+                <input ref={chatFileRef} type="file" onChange={handleChatFileUpload} className="hidden" />
+                <button
+                  onClick={() => chatFileRef.current?.click()}
+                  disabled={uploadRoomFile.isPending}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
+                  title="Attach file"
+                >
+                  {uploadRoomFile.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+                </button>
+                <input
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendChat(); } }}
+                  placeholder="Message the room..."
+                  className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+                />
+                <button
+                  onClick={handleSendChat}
+                  disabled={!chatInput.trim() || sendRoomMessage.isPending}
+                  className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40 hover:opacity-90"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+
       <AnimatePresence>
         {viewingFile && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex flex-col">
