@@ -1,136 +1,277 @@
+// SOFI Study Chat — multi-provider streaming edge function
+// Streams SSE in OpenAI-compatible format: data: {"choices":[{"delta":{"content":"..."}}]}\n\n
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const TEXT_SYSTEM_PROMPT = `You are SOFI, an advanced AI Study Assistant and expert teacher.
+const TEXT_SYSTEM =
+  "You are SOFI, a professional AI study assistant. Use markdown formatting with headers, bold, code blocks. Give concrete examples. End every response with a practice question or 2 actionable next steps. Expert in CS, Software Engineering, Math, Physics, Business.";
 
-Your capabilities:
-- Explaining complex topics in simple, student-friendly language
-- Summarizing lectures and study materials
-- Creating structured study notes with headings and bullet points
-- Generating high-quality quiz questions (MCQs with correct answers marked)
-- Drafting assignments and presentation outlines
-- Generating viva/oral exam questions
-- Creating time-bound study plans
-- Simplifying difficult concepts with examples
-- Improving English writing
-- Providing motivation and focus tips
+const VOICE_SYSTEM =
+  "You are SOFI voice tutor. MAX 3-4 short sentences. Zero markdown. Natural speech: 'Think of it like...', 'Here is the key thing...'. After each point say Want me to continue? For quizzes say Here is your question: then ONE question. Always encouraging.";
 
-STRICT OUTPUT RULES:
-1. When asked to explain/summarize/create notes, structure output as:
-   - KEY SUMMARY (bullet points of most important ideas)
-   - DETAILED NOTES (headings, subheadings, simple language, key terms highlighted)
-   - CORE CONCEPTS (difficult concepts explained simply with examples)
-   - KEY TAKEAWAYS (5-10 quick revision points)
+interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
 
-2. When asked to generate quiz/MCQs:
-   - Generate high-quality multiple-choice questions
-   - Each question MUST have 4 options (A, B, C, D)
-   - Clearly mark the correct answer
-   - Questions should test understanding, not just memorization
+const encoder = new TextEncoder();
 
-3. When creating study plans:
-   - STRICTLY follow any given time limit
-   - Divide time logically across topics
-   - Each task MUST include specific time allocation
-   - Sum of all tasks MUST match total duration
-   - Prioritize important topics
-   - Keep tasks realistic and manageable
+function encodeChunk(text: string): Uint8Array {
+  const payload = JSON.stringify({ choices: [{ delta: { content: text } }] });
+  return encoder.encode(`data: ${payload}\n\n`);
+}
 
-4. When processing documents/files:
-   - Use ONLY the provided content
-   - Do NOT add outside knowledge or hallucinate
-   - Do NOT repeat the same information
-   - If information is missing, say: "Insufficient information in provided text"
-   - If content is long, prioritize the most important concepts
+const DONE_CHUNK = encoder.encode("data: [DONE]\n\n");
 
-FORMATTING:
-- Use markdown formatting for structure (headers, bold, bullet points, code blocks)
-- Use numbered lists for sequential steps
-- Use tables when comparing items
-- Keep formatting clean and readable
-- Be encouraging and supportive`;
+function errorResponse(message: string, status = 500) {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
-const VOICE_SYSTEM_PROMPT = `You are SOFI, a voice-first AI study assistant speaking to a student.
+const sseHeaders = {
+  ...corsHeaders,
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache",
+  Connection: "keep-alive",
+};
 
-VOICE RESPONSE RULES:
-1. Keep responses SHORT — max 3-4 sentences per thought
-2. Use natural conversational language, not academic writing
-3. NEVER use markdown formatting (no #, *, **, -, bullet points, code blocks)
-4. NEVER use lists with dashes or numbers unless specifically asked for a quiz
-5. Use pauses naturally with periods and commas
-6. Break complex explanations into digestible chunks
-7. Ask "Want me to continue?" or "Should I explain more?" after key points
-8. Use simple words — explain like talking to a friend
-9. For quizzes: read one question at a time, pause for answer
-10. Be warm, encouraging, and conversational
+// ── Gemini (Google AI Studio, free) ─────────────────────────────────────────
+async function streamGemini(
+  apiKey: string,
+  systemPrompt: string,
+  messages: ChatMessage[],
+  maxOutputTokens: number,
+): Promise<Response> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:streamGenerateContent?key=${apiKey}&alt=sse`;
 
-INTENT DETECTION & SMART BEHAVIOR:
-- "explain" → Give a clear, short explanation with a simple example
-- "quiz" / "quiz me" → Ask one question at a time with 4 options, wait for answer
-- "summarize" → Give 2-3 key takeaway sentences
-- "plan" / "study plan" → Suggest a simple time-bound schedule
-- "simplify" → Rephrase in much easier words with an analogy
-- "help study" → Ask what subject, then guide step by step
-- "start focus session" → Confirm and encourage to start
-- "how am i doing" → Give motivational progress feedback
+  const body = {
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents: messages.map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    })),
+    generationConfig: { maxOutputTokens, temperature: 0.7 },
+  };
 
-You help with explaining topics, creating quizzes, summarizing notes, making study plans, and keeping students motivated. Sound like a helpful study buddy, not a textbook.`;
+  const upstream = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 
+  if (!upstream.ok || !upstream.body) {
+    return errorResponse(`Gemini error: ${await upstream.text()}`, upstream.status);
+  }
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const reader = upstream.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data:")) continue;
+            const data = trimmed.slice(5).trim();
+            if (!data || data === "[DONE]") continue;
+            try {
+              const parsed = JSON.parse(data);
+              const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (text) controller.enqueue(encodeChunk(text));
+            } catch { /* skip */ }
+          }
+        }
+        controller.enqueue(DONE_CHUNK);
+      } catch (err) {
+        console.error("Gemini stream error", err);
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, { headers: sseHeaders });
+}
+
+// ── OpenAI ──────────────────────────────────────────────────────────────────
+async function streamOpenAI(
+  apiKey: string,
+  systemPrompt: string,
+  messages: ChatMessage[],
+  maxTokens: number,
+): Promise<Response> {
+  const upstream = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      stream: true,
+      temperature: 0.7,
+      max_tokens: maxTokens,
+      messages: [{ role: "system", content: systemPrompt }, ...messages],
+    }),
+  });
+
+  if (!upstream.ok || !upstream.body) {
+    return errorResponse(`OpenAI error: ${await upstream.text()}`, upstream.status);
+  }
+  return new Response(upstream.body, { headers: sseHeaders });
+}
+
+// ── Anthropic ───────────────────────────────────────────────────────────────
+async function streamAnthropic(
+  apiKey: string,
+  systemPrompt: string,
+  messages: ChatMessage[],
+  maxTokens: number,
+): Promise<Response> {
+  const upstream = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5",
+      max_tokens: maxTokens,
+      temperature: 0.7,
+      system: systemPrompt,
+      stream: true,
+      messages: messages.map((m) => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.content,
+      })),
+    }),
+  });
+
+  if (!upstream.ok || !upstream.body) {
+    return errorResponse(`Anthropic error: ${await upstream.text()}`, upstream.status);
+  }
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const reader = upstream.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data:")) continue;
+            const data = trimmed.slice(5).trim();
+            if (!data || data === "[DONE]") continue;
+            try {
+              const parsed = JSON.parse(data);
+              if (
+                parsed.type === "content_block_delta" &&
+                parsed.delta?.type === "text_delta" &&
+                parsed.delta.text
+              ) {
+                controller.enqueue(encodeChunk(parsed.delta.text));
+              }
+            } catch { /* skip */ }
+          }
+        }
+        controller.enqueue(DONE_CHUNK);
+      } catch (err) {
+        console.error("Anthropic stream error", err);
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, { headers: sseHeaders });
+}
+
+// ── Lovable AI Gateway ──────────────────────────────────────────────────────
+async function streamLovable(
+  apiKey: string,
+  systemPrompt: string,
+  messages: ChatMessage[],
+  maxTokens: number,
+): Promise<Response> {
+  const upstream = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "google/gemini-flash-1.5",
+      stream: true,
+      temperature: 0.7,
+      max_tokens: maxTokens,
+      messages: [{ role: "system", content: systemPrompt }, ...messages],
+    }),
+  });
+
+  if (!upstream.ok || !upstream.body) {
+    return errorResponse(`Lovable AI error: ${await upstream.text()}`, upstream.status);
+  }
+  return new Response(upstream.body, { headers: sseHeaders });
+}
+
+// ── Main handler ────────────────────────────────────────────────────────────
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  let payload: { messages?: ChatMessage[]; voice_mode?: boolean };
+  try {
+    payload = await req.json();
+  } catch {
+    return errorResponse("Invalid JSON body", 400);
+  }
+
+  const messages = Array.isArray(payload.messages) ? payload.messages : [];
+  if (messages.length === 0) {
+    return errorResponse("messages array is required", 400);
+  }
+
+  const voiceMode = !!payload.voice_mode;
+  const systemPrompt = voiceMode ? VOICE_SYSTEM : TEXT_SYSTEM;
+  const maxTokens = voiceMode ? 300 : 1500;
+
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  const openaiKey = Deno.env.get("OPENAI_API_KEY");
+  const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
+  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
 
   try {
-    const { messages, voice_mode } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-
-    const systemPrompt = voice_mode ? VOICE_SYSTEM_PROMPT : TEXT_SYSTEM_PROMPT;
-
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages,
-        ],
-        stream: true,
-      }),
-    });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit reached. Please wait a moment and try again." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds in Settings." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
-      return new Response(JSON.stringify({ error: "AI service error" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    return new Response(response.body, {
-      headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
-    });
-  } catch (e) {
-    console.error("study-chat error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    if (geminiKey) return await streamGemini(geminiKey, systemPrompt, messages, maxTokens);
+    if (openaiKey) return await streamOpenAI(openaiKey, systemPrompt, messages, maxTokens);
+    if (anthropicKey) return await streamAnthropic(anthropicKey, systemPrompt, messages, maxTokens);
+    if (lovableKey) return await streamLovable(lovableKey, systemPrompt, messages, maxTokens);
+  } catch (err) {
+    console.error("Provider error", err);
+    return errorResponse(err instanceof Error ? err.message : "Provider error");
   }
+
+  return errorResponse(
+    "Add GEMINI_API_KEY in Supabase Edge Functions Secrets. Get free key at https://aistudio.google.com/app/apikey",
+  );
 });
