@@ -67,6 +67,18 @@ export default function StudyAnalytics() {
       Created: tasks.filter((t: any) => isSameDay(new Date(t.created_at), d)).length,
     }));
 
+    // Focus minutes per day from completed study_sessions
+    const focusByDay = last7.map((d) => {
+      const mins = sessions
+        .filter((s: any) => s.completed && isSameDay(new Date(s.created_at), d))
+        .reduce((acc: number, s: any) => acc + (s.session_duration || 0), 0);
+      return { day: format(d, "EEE"), Minutes: mins, Hours: +(mins / 60).toFixed(2) };
+    });
+    const totalFocusMinWeek = focusByDay.reduce((a, b) => a + b.Minutes, 0);
+    const todayFocusMin = sessions
+      .filter((s: any) => s.completed && isSameDay(new Date(s.created_at), today))
+      .reduce((acc: number, s: any) => acc + (s.session_duration || 0), 0);
+
     let cum = 0;
     const monthly = last30.map((d, i) => {
       const daily = completed.filter((t: any) => t.completed_at && isSameDay(new Date(t.completed_at), d)).length;
@@ -139,8 +151,9 @@ export default function StudyAnalytics() {
       total: tasks.length, completedCount: completed.length, completionRate, streak, overdue,
       activePlans, weekly, monthly, radar, priority, peakHourLabel, avgPerDay, best, heatmap,
       score, label, scoreColor, notesCount: notes.length,
+      focusByDay, totalFocusMinWeek, todayFocusMin,
     };
-  }, [tasks, notes, plans]);
+  }, [tasks, notes, plans, sessions]);
 
   const intensityClass = (c: number) => {
     if (c === 0) return "bg-muted";
