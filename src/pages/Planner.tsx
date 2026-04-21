@@ -346,7 +346,8 @@ RULES YOU MUST FOLLOW:
       <div className="flex items-center justify-between p-2 border-b border-border bg-card/60 backdrop-blur-sm">
         <div className="flex gap-1">
           {([
-            { key: "plans" as Tab, label: "Plans", icon: LayoutList },
+            { key: "board" as Tab, label: "Board", icon: LayoutGrid },
+            { key: "list" as Tab, label: "List", icon: LayoutList },
             { key: "calendar" as Tab, label: "Calendar", icon: CalendarDays },
           ]).map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)}
@@ -355,7 +356,7 @@ RULES YOU MUST FOLLOW:
             </button>
           ))}
         </div>
-        {tab === "plans" && (
+        {tab !== "calendar" && (
           <div className="flex gap-2">
             <button onClick={() => setView("ai-generate")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-info/10 text-info text-xs font-medium hover:bg-info/20 transition-colors"><Sparkles className="w-3.5 h-3.5" /> AI Generate</button>
             <button onClick={() => { resetForm(); setView("create"); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity"><Plus className="w-3.5 h-3.5" /> Create</button>
@@ -367,9 +368,59 @@ RULES YOU MUST FOLLOW:
         {tab === "calendar" ? (
           <CalendarView plans={plans} tasks={tasks} />
         ) : (
-          <div className="p-4 lg:p-6 max-w-5xl mx-auto space-y-6">
+          <div className="p-4 lg:p-6 max-w-6xl mx-auto space-y-5">
             {view === "overview" && (
               <>
+                {/* Today's Focus */}
+                <motion.div variants={item} className="glass-card p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                      <Flame className="w-4 h-4 text-warning" /> Today's Focus
+                      <span className="text-[10px] font-normal text-muted-foreground ml-1">{format(new Date(), "EEE, MMM d")}</span>
+                    </p>
+                    {todayFocus.length > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-warning/10 text-warning font-semibold">{todayFocus.length} due</span>}
+                  </div>
+                  {todayFocus.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-2">Nothing due today — great day to get ahead 🚀</p>
+                  ) : (
+                    <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                      {todayFocus.map((s) => (
+                        <motion.div key={s.id} layout
+                          className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/50 hover:bg-muted border border-border flex-shrink-0 group cursor-pointer"
+                          onClick={() => { setSelectedPlan(s.plan!); setView("plan-detail"); }}>
+                          <span className="text-base">{s.plan?.emoji}</span>
+                          <div className="min-w-0 max-w-[180px]">
+                            <p className="text-xs font-semibold text-foreground truncate">{s.title}</p>
+                            <p className="text-[10px] text-muted-foreground truncate">{s.plan?.title}</p>
+                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleTodaySession(s.id, s.plan_id); }}
+                            className="ml-1 w-6 h-6 rounded-full bg-success/10 text-success hover:bg-success hover:text-success-foreground flex items-center justify-center transition-colors flex-shrink-0"
+                            title="Mark complete">
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+
+                {/* Stats pills */}
+                <motion.div variants={item} className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                  {[
+                    { label: "Active Plans", value: activePlans.length, icon: Target, color: "text-primary", bg: "bg-primary/10" },
+                    { label: "Total Milestones", value: allSessions.length, icon: Layers, color: "text-info", bg: "bg-info/10" },
+                    { label: "Completed this week", value: completedThisWeek, icon: CheckCircle2, color: "text-success", bg: "bg-success/10" },
+                    { label: "Avg progress", value: `${avgProgress}%`, icon: TrendingUp, color: "text-warning", bg: "bg-warning/10" },
+                  ].map((s) => (
+                    <div key={s.label} className={`flex items-center gap-2 px-3 py-2 rounded-full border border-border ${s.bg} flex-shrink-0`}>
+                      <s.icon className={`w-3.5 h-3.5 ${s.color}`} />
+                      <span className={`text-sm font-bold ${s.color}`}>{s.value}</span>
+                      <span className="text-[11px] text-muted-foreground whitespace-nowrap">{s.label}</span>
+                    </div>
+                  ))}
+                </motion.div>
+
                 {/* Templates */}
                 <motion.div variants={item}>
                   <p className="text-xs font-medium text-muted-foreground mb-3">Quick Templates</p>
@@ -386,21 +437,7 @@ RULES YOU MUST FOLLOW:
                   </div>
                 </motion.div>
 
-                {/* Stats */}
-                <motion.div variants={item} className="grid grid-cols-3 gap-3">
-                  {[
-                    { label: "Active Plans", value: activePlans.length, icon: Target, color: "text-primary" },
-                    { label: "Completed", value: completedPlans.length, icon: CheckCircle2, color: "text-success" },
-                    { label: "Total Sessions", value: plans.reduce((a, p) => a + p.progress, 0), icon: TrendingUp, color: "text-info" },
-                  ].map((s) => (
-                    <div key={s.label} className="glass-card p-4 flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center"><s.icon className={`w-4 h-4 ${s.color}`} /></div>
-                      <div><p className="text-lg font-bold text-foreground">{s.value}</p><p className="text-[11px] text-muted-foreground">{s.label}</p></div>
-                    </div>
-                  ))}
-                </motion.div>
-
-                {/* Activity chart + overall progress */}
+                {/* Activity chart + radial */}
                 <motion.div variants={item} className="grid lg:grid-cols-3 gap-3">
                   <div className="glass-card p-4 lg:col-span-2">
                     <div className="flex items-center justify-between mb-2">
@@ -430,38 +467,56 @@ RULES YOU MUST FOLLOW:
                     <div className="relative flex-1 flex items-center justify-center">
                       <div className="h-[140px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                          <RadialBarChart innerRadius="70%" outerRadius="100%" data={[{ name: "avg", value: plans.length ? Math.round(plans.reduce((a, p) => a + (p.progress || 0), 0) / plans.length) : 0, fill: "hsl(var(--primary))" }]} startAngle={90} endAngle={-270}>
+                          <RadialBarChart innerRadius="70%" outerRadius="100%" data={[{ name: "avg", value: avgProgress, fill: "hsl(var(--primary))" }]} startAngle={90} endAngle={-270}>
                             <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
                             <RadialBar background={{ fill: "hsl(var(--muted))" }} dataKey="value" cornerRadius={20} />
                           </RadialBarChart>
                         </ResponsiveContainer>
                       </div>
                       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                        <p className="text-2xl font-bold text-foreground">{plans.length ? Math.round(plans.reduce((a, p) => a + (p.progress || 0), 0) / plans.length) : 0}%</p>
+                        <p className="text-2xl font-bold text-foreground">{avgProgress}%</p>
                         <p className="text-[10px] text-muted-foreground">{plans.length} plan{plans.length !== 1 ? "s" : ""}</p>
                       </div>
                     </div>
                   </div>
                 </motion.div>
 
-                {/* Plans List */}
-                <motion.div variants={item} className="space-y-4">
-                  {activePlans.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1.5"><Clock className="w-3 h-3" /> Active Plans</p>
-                      <div className="grid gap-3 sm:grid-cols-2">{activePlans.map((plan) => <PlanCard key={plan.id} plan={plan} onClick={() => { setSelectedPlan(plan); setView("plan-detail"); }} />)}</div>
-                    </div>
-                  )}
-                  {completedPlans.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3" /> Completed Plans</p>
-                      <div className="grid gap-3 sm:grid-cols-2">{completedPlans.map((plan) => <PlanCard key={plan.id} plan={plan} onClick={() => { setSelectedPlan(plan); setView("plan-detail"); }} />)}</div>
-                    </div>
-                  )}
-                  {plans.length === 0 && !isLoading && (
-                    <div className="text-center py-12"><div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3"><Target className="w-6 h-6 text-muted-foreground" /></div><p className="text-sm font-medium text-foreground">No plans yet</p><p className="text-xs text-muted-foreground mt-1">Create your first plan or use a template</p></div>
-                  )}
-                </motion.div>
+                {/* Board or List View */}
+                {plans.length === 0 && !isLoading ? (
+                  <div className="text-center py-12"><div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3"><Target className="w-6 h-6 text-muted-foreground" /></div><p className="text-sm font-medium text-foreground">No plans yet</p><p className="text-xs text-muted-foreground mt-1">Create your first plan or use a template</p></div>
+                ) : tab === "board" ? (
+                  <motion.div variants={item} className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1">
+                    {([
+                      { key: "active", label: "Active", items: activePlans, accent: "text-primary", dot: "bg-primary" },
+                      { key: "overdue", label: "Overdue", items: overduePlans, accent: "text-destructive", dot: "bg-destructive" },
+                      { key: "completed", label: "Completed", items: completedPlans, accent: "text-success", dot: "bg-success" },
+                    ]).map((col) => (
+                      <div key={col.key} className="flex-shrink-0 w-[300px] sm:w-[340px] flex flex-col">
+                        <div className="flex items-center justify-between mb-3 px-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${col.dot}`} />
+                            <p className={`text-xs font-semibold ${col.accent}`}>{col.label}</p>
+                          </div>
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{col.items.length}</span>
+                        </div>
+                        <div className="space-y-3">
+                          {col.items.length === 0 ? (
+                            <div className="border border-dashed border-border rounded-xl p-6 text-center text-[11px] text-muted-foreground">No plans here</div>
+                          ) : col.items.map((plan) => (
+                            <PlanCard key={plan.id} plan={plan} sessions={sessionsByPlan.get(plan.id) || []} hasToday={planHasTodaySession(plan.id)} onClick={() => { setSelectedPlan(plan); setView("plan-detail"); }} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </motion.div>
+                ) : (
+                  // List view
+                  <motion.div variants={item} className="space-y-2">
+                    {[...overduePlans, ...activePlans, ...completedPlans].map((plan) => (
+                      <PlanRow key={plan.id} plan={plan} sessions={sessionsByPlan.get(plan.id) || []} overdue={isPlanOverdue(plan.id)} onClick={() => { setSelectedPlan(plan); setView("plan-detail"); }} />
+                    ))}
+                  </motion.div>
+                )}
               </>
             )}
 
