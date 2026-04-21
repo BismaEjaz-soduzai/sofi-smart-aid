@@ -172,6 +172,7 @@ export default function Dashboard() {
         </div>
       </motion.div>
 
+      <div className="grid lg:grid-cols-3 gap-6">
         {/* Today's Focus */}
         <motion.div variants={item} className="lg:col-span-2 glass-card p-6 space-y-4">
           <div className="flex items-center justify-between">
