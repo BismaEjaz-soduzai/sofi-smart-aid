@@ -21,6 +21,7 @@ import { useIncomingCallNotifier } from "@/hooks/useIncomingCallNotifier";
 import { usePresence } from "@/hooks/usePresence";
 import { useReactions } from "@/hooks/useReactions";
 import CallBar from "@/components/chat/CallBar";
+import JitsiCallPanel from "@/components/chat/JitsiCallPanel";
 import VoiceMicButton from "@/components/VoiceMicButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -359,7 +360,7 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   return (
     <>
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Active call bar */}
+        {/* Active call bar + embedded Jitsi panel */}
         <AnimatePresence>
           {call.activeCall && (
             <CallBar
@@ -370,13 +371,21 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
               isRecording={call.isRecording}
               recordingTime={call.recordingTime}
               formatRecTime={call.formatRecTime}
-              onReopen={() => call.joinCall(call.activeCall!.callUrl)}
               onEnd={call.endCall}
               onStartRecording={() => call.startRecording(handleSaveRecording)}
               onStopRecording={call.stopRecording}
             />
           )}
         </AnimatePresence>
+        {call.activeCall && (
+          <JitsiCallPanel
+            roomName={call.activeCall.roomName}
+            callUrl={call.activeCall.callUrl}
+            isVideo={call.activeCall.isVideo}
+            displayName={memberMap.get(userId) || "Guest"}
+            onClose={call.endCall}
+          />
+        )}
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/60 backdrop-blur-sm flex-shrink-0">
