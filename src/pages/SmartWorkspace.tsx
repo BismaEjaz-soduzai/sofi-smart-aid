@@ -542,6 +542,19 @@ export default function SmartWorkspace() {
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [newRoom, setNewRoom] = useState({ name: "", emoji: "📁", color: "blue" });
 
+  const filtered = files.filter((f) => f.file_name.toLowerCase().includes(search.toLowerCase()));
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    Array.from(e.dataTransfer.files).forEach((f) => uploadFile.mutate(f));
+  }, [uploadFile]);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) Array.from(e.target.files).forEach((f) => uploadFile.mutate(f));
+    e.target.value = "";
+  };
+
   const [viewingFile, setViewingFile] = useState<ViewingFile | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
