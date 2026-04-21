@@ -8,6 +8,7 @@ export interface Note {
   title: string;
   content: string;
   category: string;
+  reminder_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -16,6 +17,7 @@ export interface NoteInsert {
   title: string;
   content?: string;
   category?: string;
+  reminder_at?: string | null;
 }
 
 export function useNotes() {

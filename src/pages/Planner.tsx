@@ -237,11 +237,25 @@ RULES YOU MUST FOLLOW:
     finally { setAiLoading(false); }
   };
 
+  const [aiPlanTitle, setAiPlanTitle] = useState("");
+
   const saveAiPlan = async () => {
-    if (!aiPrompt.trim()) return;
+    if (!aiOutput.trim()) { toast.error("Generate a plan first"); return; }
+    const title = (aiPlanTitle.trim() || aiPrompt.trim().slice(0, 60) || "Untitled AI Plan");
     try {
-      await createPlan.mutateAsync({ title: aiPrompt.slice(0, 60), goal: aiPrompt, category: "study", emoji: "🧠", color_tag: "purple", description: aiOutput, source_type: "ai" });
-      toast.success("AI plan saved!"); setView("overview"); setAiPrompt(""); setAiOutput("");
+      await createPlan.mutateAsync({ title, goal: aiPrompt, category: "study", emoji: "🧠", color_tag: "purple", description: aiOutput, source_type: "ai" });
+      toast.success("Plan saved! Open it to view the full plan.");
+      setView("overview"); setAiPrompt(""); setAiOutput(""); setAiPlanTitle("");
+    } catch { toast.error("Failed to save plan"); }
+  };
+
+  const saveAiAsPlanFromCreate = async () => {
+    if (!aiOutput.trim()) { toast.error("Generate a plan first"); return; }
+    if (!form.title.trim()) { toast.error("Add a title before saving"); return; }
+    try {
+      await createPlan.mutateAsync({ ...form, description: aiOutput, source_type: "ai" });
+      toast.success("Plan saved! Open it to view the full plan.");
+      setView("overview"); resetForm(); setAiOutput(""); setAiPrompt("");
     } catch { toast.error("Failed to save plan"); }
   };
 
@@ -412,7 +426,8 @@ RULES YOU MUST FOLLOW:
                   {aiOutput && (
                     <div className="mt-3 bg-muted/30 border border-border rounded-xl p-4 max-h-60 overflow-auto">
                       <div className="prose prose-sm dark:prose-invert max-w-none"><ReactMarkdown>{aiOutput}</ReactMarkdown></div>
-                      <div className="flex gap-2 mt-3">
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        <button onClick={saveAiAsPlanFromCreate} disabled={createPlan.isPending} className="px-3 py-1.5 rounded-lg bg-success text-success-foreground text-xs font-medium hover:opacity-90 disabled:opacity-40 transition-opacity flex items-center gap-1.5"><Save className="w-3 h-3" /> Save as Plan</button>
                         <button onClick={() => { setForm({ ...form, description: aiOutput, source_type: "ai" }); setAiOutput(""); setAiPrompt(""); toast.success("AI plan added to description"); }} className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity">Use as Description</button>
                         <button onClick={() => { setAiOutput(""); }} className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs font-medium hover:text-foreground transition-colors">Discard</button>
                       </div>
@@ -429,7 +444,26 @@ RULES YOU MUST FOLLOW:
                 <div className="flex items-center justify-between"><div><h2 className="text-base font-bold text-foreground flex items-center gap-2"><Sparkles className="w-4 h-4 text-info" /> AI Plan Generator</h2><p className="text-xs text-muted-foreground mt-0.5">Describe what you need, and SOFI will create a plan</p></div><button onClick={() => { setView("overview"); setAiOutput(""); setAiPrompt(""); }} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button></div>
                 <div className="flex items-end gap-2 bg-card border border-border rounded-xl px-4 py-3"><textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAiGenerate(); } }} placeholder="e.g. Make me a 2-month study plan..." rows={2} className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none resize-none" /><button onClick={handleAiGenerate} disabled={!aiPrompt.trim() || aiLoading} className="w-9 h-9 rounded-lg bg-info text-info-foreground flex items-center justify-center disabled:opacity-40 hover:opacity-90 transition-opacity flex-shrink-0">{aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}</button></div>
                 <div className="flex flex-wrap gap-2">{SUGGESTED_AI_PROMPTS.map((p) => (<button key={p} onClick={() => setAiPrompt(p)} className="px-3 py-1.5 rounded-lg bg-muted/60 text-xs text-muted-foreground hover:bg-info/10 hover:text-info transition-colors">{p}</button>))}</div>
-                {aiOutput && (<div className="glass-card p-5 space-y-4"><div className="prose prose-sm dark:prose-invert max-w-none"><ReactMarkdown>{aiOutput}</ReactMarkdown></div>{!aiLoading && (<button onClick={saveAiPlan} className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity">Save as Plan</button>)}</div>)}
+                {aiOutput && (
+                  <div className="glass-card p-5 space-y-4">
+                    <div className="prose prose-sm dark:prose-invert max-w-none"><ReactMarkdown>{aiOutput}</ReactMarkdown></div>
+                    {!aiLoading && (
+                      <div className="space-y-2 pt-2 border-t border-border">
+                        <label className="text-xs font-medium text-muted-foreground">Plan title (so you can find it later)</label>
+                        <input
+                          value={aiPlanTitle}
+                          onChange={(e) => setAiPlanTitle(e.target.value)}
+                          placeholder="e.g. Cloud Computing — 5-day Revision"
+                          className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+                        />
+                        <button onClick={saveAiPlan} disabled={createPlan.isPending} className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity flex items-center justify-center gap-2">
+                          <Save className="w-4 h-4" /> {createPlan.isPending ? "Saving…" : "Save as Plan"}
+                        </button>
+                        <p className="text-[10px] text-muted-foreground text-center">Your plan will appear in the Plans list. Click it anytime to view the full content.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </motion.div>
             )}
           </div>
