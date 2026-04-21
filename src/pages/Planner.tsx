@@ -51,11 +51,76 @@ const COLOR_OPTIONS = [
 const EMOJI_OPTIONS = ["📘", "📝", "🎓", "🚀", "💼", "🎤", "📚", "🧠", "⚡", "🎯", "💡", "🔥"];
 
 const SUGGESTED_AI_PROMPTS = [
-  "Make me a 2-month study plan for Software Testing",
-  "Create a weekly revision plan for Cloud Computing",
-  "Build a 5-day assignment completion plan",
-  "Generate a 30-day FYP roadmap",
+  "2-month Software Engineering exam prep",
+  "Weekly revision plan for 5 subjects",
+  "30-day FYP completion roadmap",
+  "5-day assignment sprint plan",
+  "1-month internship preparation",
+  "Semester study schedule",
+  "7-day exam crash course",
+  "Daily routine with study blocks",
 ];
+
+const TEMPLATE_PROMPTS: Record<string, string> = {
+  "2-Month Test Prep": "Create a 2-month test preparation plan with daily study sessions, weekly reviews, and practice tests. Include specific time allocations per topic.",
+  "Weekly Study Plan": "Create a 7-day weekly study plan covering multiple subjects with balanced daily sessions, breaks, and a Sunday review.",
+  "Exam Countdown": "Create a 14-day exam countdown plan with topic-by-topic revision, mock tests on day 7 and day 13, and a light review on the final day.",
+  "FYP Work Plan": "Create a 3-month Final Year Project plan with weekly deliverables, supervisor meeting milestones, prototype checkpoints, and submission deadlines.",
+  "Assignment Plan": "Create a 7-day assignment completion plan: research, outline, draft, revise, polish, proofread, submit. One clear focus per day.",
+  "Presentation Prep": "Create a 3-day presentation preparation plan: day 1 outline & research, day 2 build slides & visuals, day 3 rehearse & polish delivery.",
+  "7-Day Revision Sprint": "Create an intensive 7-day revision sprint covering all key topics, with daily active recall, practice questions, and a final mock test.",
+};
+
+// Parse "Sessions" / "Day-by-day" lines from AI markdown into session objects.
+function parseAiSessions(markdown: string, startDate: string | null): Array<{ title: string; date: string | null }> {
+  if (!markdown) return [];
+  const lines = markdown.split(/\r?\n/);
+  const out: Array<{ title: string; date: string | null }> = [];
+  const start = startDate ? parseISO(startDate) : null;
+
+  // Pattern A: "### Day N — YYYY-MM-DD — focus"
+  // Pattern B: "- [YYYY-MM-DD] title — desc"  or  "- [Day N] title — desc"
+  // Pattern C: numbered "1. title"
+  const dayHeader = /^#{2,4}\s*Day\s+(\d+)\s*[—\-:]\s*(\d{4}-\d{2}-\d{2})?\s*[—\-:]?\s*(.+)?$/i;
+  const bracketLine = /^[-*]\s*\[?(?:Day\s+(\d+)|(\d{4}-\d{2}-\d{2}))\]?\s*[—\-:]?\s*(.+)$/i;
+  const numbered = /^(\d+)\.\s+(.+)$/;
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    let m = line.match(dayHeader);
+    if (m) {
+      const dayN = parseInt(m[1], 10);
+      const explicit = m[2] || null;
+      const title = (m[3] || `Day ${dayN}`).replace(/[*_`]/g, "").trim();
+      const date = explicit || (start ? format(addDays(start, dayN - 1), "yyyy-MM-dd") : null);
+      out.push({ title, date });
+      continue;
+    }
+    m = line.match(bracketLine);
+    if (m) {
+      const dayN = m[1] ? parseInt(m[1], 10) : null;
+      const explicit = m[2] || null;
+      const title = m[3].replace(/[*_`]/g, "").trim();
+      const date = explicit || (dayN && start ? format(addDays(start, dayN - 1), "yyyy-MM-dd") : null);
+      out.push({ title, date });
+      continue;
+    }
+    m = line.match(numbered);
+    if (m && /session|day|week|milestone|topic/i.test(m[2])) {
+      out.push({ title: m[2].replace(/[*_`]/g, "").trim(), date: null });
+    }
+  }
+  // Dedupe by title+date
+  const seen = new Set<string>();
+  return out.filter((s) => {
+    const k = `${s.title}::${s.date}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  }).slice(0, 30);
+}
 
 type View = "overview" | "create" | "ai-generate" | "plan-detail";
 type Tab = "board" | "list" | "calendar";
