@@ -71,7 +71,7 @@ export default function SofiAssistant() {
 
   const handleAskSofi = (prompt: string) => {
     setSharedPrompt(prompt);
-    setSection("chat");
+    changeSection("chat");
   };
 
   return (
@@ -85,7 +85,7 @@ export default function SofiAssistant() {
         ]).map((s) => (
           <button
             key={s.key}
-            onClick={() => setSection(s.key)}
+            onClick={() => changeSection(s.key)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
               section === s.key
                 ? "bg-primary/10 text-primary"
@@ -107,9 +107,9 @@ export default function SofiAssistant() {
           </div>
         </div>
       )}
-      {section === "voice" && <VoiceMode onSwitchToText={() => setSection("chat")} />}
+      {section === "voice" && <VoiceMode onSwitchToText={() => changeSection("chat")} />}
       {section === "focus" && <FocusSection />}
-      {section === "tools" && <ToolsSection onUsePrompt={(p) => { setSharedPrompt(p); setSection("chat"); }} />}
+      {section === "tools" && <ToolsSection onUsePrompt={(p) => { setSharedPrompt(p); changeSection("chat"); }} />}
     </div>
   );
 }
