@@ -708,86 +708,207 @@ RULES YOU MUST FOLLOW:
   );
 }
 
-// ─── Calendar View ──────────────────────────
-function CalendarView({ plans, tasks }: { plans: Plan[]; tasks: any[] }) {
+// ─── Calendar View (Google-Calendar-style month grid) ──────────
+function CalendarView({
+  plans, tasks, planSessions, onOpenPlan, onAddSession, onToggleSession,
+}: {
+  plans: Plan[]; tasks: any[]; planSessions: SessionLite[];
+  onOpenPlan: (p: Plan) => void;
+  onAddSession: (planId: string, title: string, date: string) => Promise<void>;
+  onToggleSession: (sessionId: string, planId: string) => Promise<void>;
+}) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [openDay, setOpenDay] = useState<string | null>(null);
+  const [addDay, setAddDay] = useState<string | null>(null);
+  const [addPlanId, setAddPlanId] = useState<string>("");
+  const [addTitle, setAddTitle] = useState("");
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
   const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: calStart, end: calEnd });
-
-  const eventMap = useMemo(() => {
-    const map = new Map<string, { type: string; title: string; color: string }[]>();
-    const addEvent = (dateStr: string, ev: { type: string; title: string; color: string }) => {
-      if (!map.has(dateStr)) map.set(dateStr, []);
-      map.get(dateStr)!.push(ev);
-    };
-    plans.forEach((p) => {
-      if (p.start_date) addEvent(p.start_date, { type: "plan-start", title: `📅 ${p.title} starts`, color: "bg-primary" });
-      if (p.end_date) addEvent(p.end_date, { type: "plan-end", title: `🏁 ${p.title} ends`, color: "bg-info" });
-    });
-    tasks.forEach((t: any) => {
-      if (t.due_date) addEvent(t.due_date, { type: "task", title: `✅ ${t.title}`, color: t.completed ? "bg-success" : "bg-warning" });
-    });
-    return map;
-  }, [plans, tasks]);
-
-  const selectedEvents = selectedDate ? eventMap.get(format(selectedDate, "yyyy-MM-dd")) || [] : [];
   const today = new Date();
 
+  const planById = useMemo(() => new Map(plans.map((p) => [p.id, p])), [plans]);
+
+  // Map date -> sessions[]
+  const sessionsByDate = useMemo(() => {
+    const m = new Map<string, Array<SessionLite & { plan?: Plan }>>();
+    planSessions.forEach((s) => {
+      if (!s.date) return;
+      const arr = m.get(s.date) || [];
+      arr.push({ ...s, plan: planById.get(s.plan_id) });
+      m.set(s.date, arr);
+    });
+    return m;
+  }, [planSessions, planById]);
+
+  const taskByDate = useMemo(() => {
+    const m = new Map<string, any[]>();
+    tasks.forEach((t: any) => { if (t.due_date) { const a = m.get(t.due_date) || []; a.push(t); m.set(t.due_date, a); } });
+    return m;
+  }, [tasks]);
+
+  const colorForCategory = (cat: string): string => {
+    const c = (CATEGORY_STYLES[cat] || CATEGORY_STYLES.study).text.replace("text-", "bg-");
+    return c;
+  };
+
+  const handleQuickAdd = async () => {
+    if (!addDay || !addPlanId || !addTitle.trim()) return;
+    await onAddSession(addPlanId, addTitle.trim(), addDay);
+    setAddDay(null); setAddTitle(""); setAddPlanId("");
+  };
+
   return (
-    <div className="p-4 lg:p-6 max-w-4xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-sm hover:text-foreground transition-colors">← Prev</button>
-        <h2 className="text-lg font-bold text-foreground">{format(currentMonth, "MMMM yyyy")}</h2>
-        <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-sm hover:text-foreground transition-colors">Next →</button>
+    <div className="p-4 lg:p-6 max-w-5xl mx-auto space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h2 className="text-xl font-bold text-foreground">{format(currentMonth, "MMMM yyyy")}</h2>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors" title="Previous month">‹</button>
+          <button onClick={() => setCurrentMonth(new Date())} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-colors">Today</button>
+          <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors" title="Next month">›</button>
+        </div>
       </div>
+
+      {/* Weekday header */}
       <div className="grid grid-cols-7 gap-1">
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-          <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">{d}</div>
+        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => (
+          <div key={d} className={`text-center text-[11px] font-semibold uppercase tracking-wider py-2 ${i >= 5 ? "text-muted-foreground/70" : "text-muted-foreground"}`}>{d}</div>
         ))}
       </div>
+
+      {/* Day grid */}
       <div className="grid grid-cols-7 gap-1">
         {days.map((day) => {
           const dateKey = format(day, "yyyy-MM-dd");
-          const events = eventMap.get(dateKey) || [];
+          const sessions = sessionsByDate.get(dateKey) || [];
+          const dayTasks = taskByDate.get(dateKey) || [];
           const isCurrentMonth = isSameMonth(day, currentMonth);
           const isToday_ = isSameDay(day, today);
-          const isSelected = selectedDate && isSameDay(day, selectedDate);
+          const weekend = isWeekend(day);
+
+          const cellBg = isToday_ ? "bg-primary/5" : weekend ? "bg-muted/20" : "bg-card";
+          const cellBorder = isToday_ ? "border-primary/30" : "border-border";
+
           return (
-            <button key={dateKey} onClick={() => setSelectedDate(day)}
-              className={`relative min-h-[70px] p-1.5 rounded-lg border text-left transition-all ${isSelected ? "border-primary bg-primary/5" : isToday_ ? "border-primary/40 bg-primary/5" : "border-border hover:border-primary/20"} ${!isCurrentMonth ? "opacity-40" : ""}`}>
-              <span className={`text-xs font-medium ${isToday_ ? "text-primary font-bold" : "text-foreground"}`}>{format(day, "d")}</span>
-              <div className="mt-1 space-y-0.5">
-                {events.slice(0, 2).map((ev, i) => (
-                  <div key={i} className={`${ev.color} rounded-sm px-1 py-0.5 text-[9px] text-white truncate leading-tight`}>{ev.title}</div>
-                ))}
-                {events.length > 2 && <p className="text-[9px] text-muted-foreground">+{events.length - 2} more</p>}
-              </div>
-            </button>
+            <Popover key={dateKey} open={openDay === dateKey} onOpenChange={(o) => setOpenDay(o ? dateKey : null)}>
+              <PopoverTrigger asChild>
+                <div
+                  className={`group relative min-h-[88px] p-1.5 rounded-lg border ${cellBorder} ${cellBg} text-left transition-all hover:border-primary/40 cursor-pointer ${!isCurrentMonth ? "opacity-40" : ""}`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    {isToday_ ? (
+                      <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">{format(day, "d")}</span>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-foreground px-1">{format(day, "d")}</span>
+                    )}
+                    {plans.length > 0 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setAddDay(dateKey); setAddPlanId(plans[0]?.id || ""); }}
+                        className="opacity-0 group-hover:opacity-100 w-4 h-4 rounded bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-all"
+                        title="Add session"
+                      >+</button>
+                    )}
+                  </div>
+                  <div className="space-y-0.5">
+                    {sessions.slice(0, 2).map((s) => {
+                      const cat = s.plan?.category || "study";
+                      const dot = colorForCategory(cat);
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={(e) => { e.stopPropagation(); if (s.plan) onOpenPlan(s.plan); }}
+                          className={`w-full flex items-center gap-1 px-1 py-0.5 rounded-sm bg-muted/50 hover:bg-muted transition-colors ${s.is_completed ? "opacity-50" : ""}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${dot} flex-shrink-0`} />
+                          <span className={`text-[9px] truncate text-foreground ${s.is_completed ? "line-through" : ""}`}>{s.title}</span>
+                        </button>
+                      );
+                    })}
+                    {sessions.length > 2 && <p className="text-[9px] text-muted-foreground px-1">+{sessions.length - 2} more</p>}
+                    {dayTasks.length > 0 && (
+                      <div className="flex gap-0.5 px-1 pt-0.5">
+                        {dayTasks.slice(0, 5).map((t: any) => (
+                          <span key={t.id} className={`w-1 h-1 rounded-full ${t.completed ? "bg-success" : "bg-warning"}`} title={t.title} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-72 p-3 space-y-2">
+                <p className="text-xs font-semibold text-foreground">{format(day, "EEEE, MMMM d")}</p>
+                {sessions.length === 0 && dayTasks.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No sessions or tasks</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-60 overflow-auto">
+                    {sessions.map((s) => (
+                      <div key={s.id} className="flex items-center gap-2 p-1.5 rounded-md bg-muted/40">
+                        <button onClick={() => onToggleSession(s.id, s.plan_id)} disabled={s.is_completed}
+                          className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${s.is_completed ? "bg-success border-success" : "border-muted-foreground/40 hover:border-primary"}`}>
+                          {s.is_completed && <Check className="w-2.5 h-2.5 text-success-foreground" />}
+                        </button>
+                        <span className="text-base">{s.plan?.emoji}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-xs font-medium truncate ${s.is_completed ? "text-muted-foreground line-through" : "text-foreground"}`}>{s.title}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">{s.plan?.title}</p>
+                        </div>
+                        {s.plan && <button onClick={() => { onOpenPlan(s.plan!); setOpenDay(null); }} className="text-[10px] text-primary hover:underline flex-shrink-0">Open</button>}
+                      </div>
+                    ))}
+                    {dayTasks.map((t: any) => (
+                      <div key={t.id} className="flex items-center gap-2 p-1.5 rounded-md bg-muted/40">
+                        <span className={`w-2 h-2 rounded-full ${t.completed ? "bg-success" : "bg-warning"}`} />
+                        <p className={`text-xs ${t.completed ? "line-through text-muted-foreground" : "text-foreground"}`}>✅ {t.title}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {plans.length > 0 && (
+                  <button
+                    onClick={() => { setAddDay(dateKey); setAddPlanId(plans[0]?.id || ""); setOpenDay(null); }}
+                    className="w-full flex items-center justify-center gap-1 mt-2 px-2 py-1.5 rounded-md bg-primary/10 text-primary text-[11px] font-semibold hover:bg-primary/20 transition-colors"
+                  >
+                    <Plus className="w-3 h-3" /> Add session on this day
+                  </button>
+                )}
+              </PopoverContent>
+            </Popover>
           );
         })}
       </div>
-      {selectedDate && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-foreground">{format(selectedDate, "EEEE, MMMM d, yyyy")}</h3>
-          {selectedEvents.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No events on this day</p>
-          ) : (
-            <div className="space-y-2">
-              {selectedEvents.map((ev, i) => (
-                <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
-                  <div className={`w-2 h-2 rounded-full ${ev.color} flex-shrink-0`} />
-                  <span className="text-sm text-foreground">{ev.title}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </motion.div>
-      )}
+
+      {/* Quick-add modal */}
+      <AnimatePresence>
+        {addDay && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+            onClick={() => setAddDay(null)}>
+            <motion.div initial={{ scale: 0.95, y: 8 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 8 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-card border border-border rounded-2xl p-5 w-full max-w-sm space-y-3 shadow-xl">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-foreground">Add session — {format(parseISO(addDay), "MMM d")}</p>
+                <button onClick={() => setAddDay(null)} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Plan</label>
+                <select value={addPlanId} onChange={(e) => setAddPlanId(e.target.value)} className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none">
+                  {plans.map((p) => <option key={p.id} value={p.id}>{p.emoji} {p.title}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Session title</label>
+                <input value={addTitle} onChange={(e) => setAddTitle(e.target.value)} autoFocus placeholder="e.g. Review chapter 5" className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring" onKeyDown={(e) => { if (e.key === "Enter") handleQuickAdd(); }} />
+              </div>
+              <button onClick={handleQuickAdd} disabled={!addTitle.trim() || !addPlanId} className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40">Add Session</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
