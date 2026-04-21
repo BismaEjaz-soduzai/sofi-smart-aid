@@ -654,31 +654,84 @@ export default function SmartWorkspace() {
     { key: "uploads", label: "Uploads" },
     { key: "ai-tools", label: "AI Tools" },
     { key: "generated", label: "Generated" },
+    { key: "chat", label: "Room Chat" },
   ];
 
   return (
     <div className="p-4 lg:p-6 max-w-5xl mx-auto space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
           {activeRoom ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button onClick={() => setActiveRoomId(undefined)} className="text-muted-foreground hover:text-foreground transition-colors"><ArrowLeft className="w-4 h-4" /></button>
               <span className="text-xl">{activeRoom.emoji}</span>
               <h1 className="text-xl font-bold text-foreground">{activeRoom.name}</h1>
+              <button
+                onClick={handleCopyInvite}
+                title="Click to copy invite code"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-primary/10 text-primary text-xs font-mono font-semibold hover:bg-primary/20 transition-colors"
+              >
+                <Copy className="w-3 h-3" /> {activeRoom.invite_code}
+              </button>
             </div>
           ) : (
-            <>
+            <div>
               <h1 className="text-xl font-bold text-foreground">Smart Workspace</h1>
               <p className="text-sm text-muted-foreground mt-0.5">Organize by subject, use AI tools, generate content</p>
-            </>
+            </div>
           )}
         </div>
         {!activeRoom && (
-          <button onClick={() => setShowCreateRoom(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity">
-            <FolderPlus className="w-3.5 h-3.5" /> New Room
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowJoinInput((v) => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-foreground text-xs font-medium hover:bg-muted/80 transition-colors">
+              <UserPlus className="w-3.5 h-3.5" /> Join
+            </button>
+            <button onClick={() => setShowCreateRoom(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity">
+              <FolderPlus className="w-3.5 h-3.5" /> New Room
+            </button>
+          </div>
         )}
       </div>
+
+      {/* Join by code */}
+      <AnimatePresence>
+        {showJoinInput && !activeRoom && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+            <div className="glass-card p-3 flex items-center gap-2">
+              <input
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                placeholder="Enter code (e.g. ABC-DEF)"
+                className="flex-1 bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring uppercase"
+                onKeyDown={(e) => { if (e.key === "Enter") handleJoinByCode(); }}
+              />
+              <button onClick={handleJoinByCode} disabled={!joinCode.trim() || joinRoomByCode.isPending} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity">
+                {joinRoomByCode.isPending ? "Joining..." : "Join"}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Active call bar */}
+      <AnimatePresence>
+        {activeRoom && roomCall.activeCall && (
+          <CallBar
+            callUrl={roomCall.activeCall.callUrl}
+            isVideo={roomCall.activeCall.isVideo}
+            startedBy={roomCall.activeCall.startedBy}
+            elapsed={callElapsed}
+            isRecording={roomCall.isRecording}
+            recordingTime={roomCall.recordingTime}
+            formatRecTime={roomCall.formatRecTime}
+            onReopen={() => roomCall.joinCall(roomCall.activeCall!.callUrl)}
+            onEnd={roomCall.endCall}
+            onStartRecording={() => roomCall.startRecording(handleSaveRoomRecording)}
+            onStopRecording={roomCall.stopRecording}
+          />
+        )}
+      </AnimatePresence>
+
 
       {/* Room creation modal */}
       <AnimatePresence>
