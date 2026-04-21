@@ -236,13 +236,53 @@ function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: strin
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [attachedFile, setAttachedFile] = useState<{ name: string; content: string } | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const { files: workspaceFiles } = useStudyFiles();
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setShowWorkspacePicker(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const attachWorkspaceFile = async (file: StudyFile) => {
+    setShowWorkspacePicker(false);
+    setIsExtracting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-file-text`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ filePath: file.file_path, fileName: file.file_name }),
+        },
+      );
+      if (!resp.ok) throw new Error("Could not read file");
+      const data = await resp.json();
+      const text = (data.text || "").slice(0, 15000);
+      if (!text.trim()) throw new Error("No text extracted");
+      setAttachedFile({ name: file.file_name, content: text });
+      toast.success(`Loaded: ${file.file_name}`);
+    } catch (e: any) {
+      toast.error(e?.message || "Could not open file");
+    } finally {
+      setIsExtracting(false);
+    }
+  };
 
   useEffect(() => {
     if (initialPrompt) {
