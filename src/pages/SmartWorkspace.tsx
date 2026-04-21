@@ -361,6 +361,7 @@ interface ViewingFile {
   name: string;
   type: string;
   previewText: string | null;
+  previewMode: "document" | "native";
 }
 
 function formatSize(bytes: number) {
