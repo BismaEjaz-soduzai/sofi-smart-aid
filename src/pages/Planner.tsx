@@ -15,6 +15,8 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameM
 import { toast } from "sonner";
 import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
 import ReactMarkdown from "react-markdown";
+import { useDailyActivity } from "@/hooks/useStudySessions";
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, RadialBar, RadialBarChart, PolarAngleAxis } from "recharts";
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/study-chat`;
 
@@ -66,6 +68,7 @@ export default function Planner() {
   const createPlan = useCreatePlan();
   const deletePlan = useDeletePlan();
   const updatePlan = useUpdatePlan();
+  const activity = useDailyActivity(7);
   const navigate = useNavigate();
   const notifiedRef = useRef<Set<string>>(new Set());
   const [view, setView] = useState<View>("overview");
@@ -243,6 +246,50 @@ export default function Planner() {
                       <div><p className="text-lg font-bold text-foreground">{s.value}</p><p className="text-[11px] text-muted-foreground">{s.label}</p></div>
                     </div>
                   ))}
+                </motion.div>
+
+                {/* Activity chart + overall progress */}
+                <motion.div variants={item} className="grid lg:grid-cols-3 gap-3">
+                  <div className="glass-card p-4 lg:col-span-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><TrendingUp className="w-3.5 h-3.5 text-primary" /> Weekly Focus Activity</p>
+                      <span className="text-[10px] text-muted-foreground">Last 7 days</span>
+                    </div>
+                    <div className="h-[160px] -ml-2">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={activity} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="planArea" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.5} />
+                              <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.05} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                          <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                          <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} width={28} />
+                          <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} formatter={(v: number) => [`${v} min`, "Focus"]} />
+                          <Area type="monotone" dataKey="minutes" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#planArea)" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                  <div className="glass-card p-4 flex flex-col">
+                    <p className="text-xs font-semibold text-foreground mb-1 flex items-center gap-1.5"><Target className="w-3.5 h-3.5 text-info" /> Avg Plan Progress</p>
+                    <div className="relative flex-1 flex items-center justify-center">
+                      <div className="h-[140px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RadialBarChart innerRadius="70%" outerRadius="100%" data={[{ name: "avg", value: plans.length ? Math.round(plans.reduce((a, p) => a + (p.progress || 0), 0) / plans.length) : 0, fill: "hsl(var(--primary))" }]} startAngle={90} endAngle={-270}>
+                            <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+                            <RadialBar background={{ fill: "hsl(var(--muted))" }} dataKey="value" cornerRadius={20} />
+                          </RadialBarChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <p className="text-2xl font-bold text-foreground">{plans.length ? Math.round(plans.reduce((a, p) => a + (p.progress || 0), 0) / plans.length) : 0}%</p>
+                        <p className="text-[10px] text-muted-foreground">{plans.length} plan{plans.length !== 1 ? "s" : ""}</p>
+                      </div>
+                    </div>
+                  </div>
                 </motion.div>
 
                 {/* Plans List */}

@@ -41,8 +41,12 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (seconds === 0 && running) {
       setRunning(false);
-      toast.success("Focus session complete! 🎉");
-      // Save completed session to study_sessions
+      const xp = Math.max(10, Math.round(duration * 2));
+      toast.success(`Focus session complete! 🎉  +${xp} XP earned`, {
+        description: `Great ${duration}-min ${sessionType.toLowerCase()}. Keep the streak alive! 🔥`,
+        duration: 6000,
+      });
+      // Save completed session + reward
       (async () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
@@ -53,6 +57,23 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
             completed: true,
           });
         }
+        // Local reward tracking (XP, streak)
+        try {
+          const today = new Date().toISOString().slice(0, 10);
+          const raw = localStorage.getItem("sofi_rewards");
+          const data = raw ? JSON.parse(raw) : { xp: 0, sessions: 0, lastDate: "", streak: 0 };
+          data.xp = (data.xp || 0) + xp;
+          data.sessions = (data.sessions || 0) + 1;
+          if (data.lastDate === today) {
+            // same day — keep streak
+          } else {
+            const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+            data.streak = data.lastDate === yesterday ? (data.streak || 0) + 1 : 1;
+            data.lastDate = today;
+          }
+          localStorage.setItem("sofi_rewards", JSON.stringify(data));
+          window.dispatchEvent(new CustomEvent("sofi-rewards-updated", { detail: data }));
+        } catch {}
       })();
     }
   }, [seconds, running, duration, sessionType]);

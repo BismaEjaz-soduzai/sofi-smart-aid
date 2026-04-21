@@ -2,14 +2,17 @@ import { motion } from "framer-motion";
 import {
   CheckSquare, StickyNote, Calendar, Sparkles, TrendingUp,
   Timer, MessageCircle, BookOpen, AlertTriangle, Zap, Target,
-  ArrowRight, Flame, Pause, Play, RotateCcw,
+  ArrowRight, Flame, Pause, Play, RotateCcw, Trophy, Star,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useTasks } from "@/hooks/useTasks";
 import { useNotes } from "@/hooks/useNotes";
 import { usePlans } from "@/hooks/usePlans";
 import { useFocusTimer } from "@/contexts/FocusTimerContext";
+import { useRewards } from "@/hooks/useRewards";
+import { useDailyActivity } from "@/hooks/useStudySessions";
 import { format, isPast, isToday, isTomorrow, parseISO } from "date-fns";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 
 const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const item = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } };
@@ -27,6 +30,8 @@ export default function Dashboard() {
   const { data: notes = [] } = useNotes();
   const { data: plans = [] } = usePlans();
   const { seconds, running, setRunning, reset, duration, sessionType } = useFocusTimer();
+  const rewards = useRewards();
+  const activity = useDailyActivity(7);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -41,7 +46,7 @@ export default function Dashboard() {
   const recentNotes = notes.slice(0, 3);
 
   const completionRate = tasks.length > 0 ? Math.round((completedTasks.length / tasks.length) * 100) : 0;
-  const streak = completedTasks.length; // simplified streak
+  const totalMinutesWeek = activity.reduce((sum, d) => sum + d.minutes, 0);
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="p-6 lg:p-8 max-w-6xl mx-auto space-y-8">
@@ -78,6 +83,93 @@ export default function Dashboard() {
             </div>
           </Link>
         ))}
+      </motion.div>
+
+      {/* Rewards + Daily Activity */}
+      <motion.div variants={item} className="grid lg:grid-cols-3 gap-4">
+        {/* Rewards card */}
+        <div className="glass-card p-5 bg-gradient-to-br from-warning/10 via-card to-primary/5 border-warning/20 relative overflow-hidden">
+          <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-warning/10 blur-2xl" />
+          <div className="relative">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-4 h-4 text-warning" />
+                <h3 className="text-sm font-semibold text-foreground">Your Rewards</h3>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-warning/20 text-warning font-bold">LV {rewards.level}</span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-foreground">{rewards.xp}</span>
+              <span className="text-xs text-muted-foreground">XP earned</span>
+            </div>
+            <div className="mt-3 h-2 rounded-full bg-muted overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${(rewards.xpInLevel / rewards.nextLevelXp) * 100}%` }}
+                transition={{ duration: 0.8 }}
+                className="h-full bg-gradient-to-r from-warning to-primary rounded-full"
+              />
+            </div>
+            <div className="flex justify-between text-[10px] text-muted-foreground mt-1.5">
+              <span>{rewards.xpInLevel}/100 to next level</span>
+              <span className="flex items-center gap-1"><Flame className="w-3 h-3 text-destructive" /> {rewards.streak}d streak</span>
+            </div>
+            <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border/50">
+              <div className="flex-1">
+                <p className="text-lg font-bold text-foreground">{rewards.sessions}</p>
+                <p className="text-[10px] text-muted-foreground">Focus sessions</p>
+              </div>
+              <div className="flex-1">
+                <p className="text-lg font-bold text-foreground">{totalMinutesWeek}<span className="text-xs font-normal text-muted-foreground"> min</span></p>
+                <p className="text-[10px] text-muted-foreground">This week</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Daily activity chart */}
+        <div className="glass-card p-5 lg:col-span-2">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-primary" />
+              <h3 className="text-sm font-semibold text-foreground">Daily Focus Activity</h3>
+            </div>
+            <span className="text-[10px] text-muted-foreground">Last 7 days</span>
+          </div>
+          {totalMinutesWeek === 0 ? (
+            <div className="h-[180px] flex flex-col items-center justify-center text-center">
+              <Star className="w-8 h-8 text-muted-foreground/40 mb-2" />
+              <p className="text-xs text-muted-foreground">Start a focus session to see your activity</p>
+            </div>
+          ) : (
+            <div className="h-[180px] -ml-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={activity} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="dashBar" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.95} />
+                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} width={28} />
+                  <Tooltip
+                    cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
+                    contentStyle={{
+                      background: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: 8,
+                      fontSize: 12,
+                    }}
+                    formatter={(v: number) => [`${v} min`, "Focus"]}
+                  />
+                  <Bar dataKey="minutes" fill="url(#dashBar)" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
       </motion.div>
 
       <div className="grid lg:grid-cols-3 gap-6">
