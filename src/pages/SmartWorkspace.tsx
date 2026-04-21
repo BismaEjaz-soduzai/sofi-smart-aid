@@ -709,7 +709,15 @@ export default function SmartWorkspace() {
     { key: "ai-tools", label: "AI Tools" },
     { key: "generated", label: "Generated" },
     { key: "chat", label: "Room Chat" },
+    { key: "recordings", label: "Recordings" },
+    { key: "pinboard", label: "Pinboard" },
   ];
+
+  // Recordings + pinboard live data (per active room)
+  const { recordings, isLoading: recordingsLoading, refetch: refetchRecordings, remove: removeRecording } = useRoomRecordings(activeRoomId);
+  const { links, addLink, removeLink, isLoading: linksLoading } = useRoomLinks(activeRoomId);
+  const [newLinkUrl, setNewLinkUrl] = useState("");
+  const [newLinkTitle, setNewLinkTitle] = useState("");
 
   return (
     <div className="p-4 lg:p-6 max-w-5xl mx-auto space-y-5">
@@ -767,7 +775,7 @@ export default function SmartWorkspace() {
         )}
       </AnimatePresence>
 
-      {/* Active call bar */}
+      {/* Active call bar + embedded Jitsi panel */}
       <AnimatePresence>
         {activeRoom && roomCall.activeCall && (
           <CallBar
@@ -778,13 +786,24 @@ export default function SmartWorkspace() {
             isRecording={roomCall.isRecording}
             recordingTime={roomCall.recordingTime}
             formatRecTime={roomCall.formatRecTime}
-            onReopen={() => roomCall.joinCall(roomCall.activeCall!.callUrl)}
             onEnd={roomCall.endCall}
-            onStartRecording={() => roomCall.startRecording(handleSaveRoomRecording)}
+            onStartRecording={() => roomCall.startRecording(async (blob, filename) => {
+              await handleSaveRoomRecording(blob, filename);
+              refetchRecordings();
+            })}
             onStopRecording={roomCall.stopRecording}
           />
         )}
       </AnimatePresence>
+      {activeRoom && roomCall.activeCall && (
+        <JitsiCallPanel
+          roomName={roomCall.activeCall.roomName}
+          callUrl={roomCall.activeCall.callUrl}
+          isVideo={roomCall.activeCall.isVideo}
+          displayName={myName}
+          onClose={roomCall.endCall}
+        />
+      )}
 
 
       {/* Room creation modal */}
