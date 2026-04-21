@@ -5,6 +5,7 @@ import {
   Sparkles, Brain, ChevronDown, MessageCircle, Settings2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
 import ReactMarkdown from "react-markdown";
 
 type VoiceState = "idle" | "listening" | "thinking" | "speaking";
@@ -206,7 +207,7 @@ export default function VoiceMode({ onSwitchToText }: { onSwitchToText: () => vo
         signal: abortRef.current.signal,
       });
 
-      if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `Error ${resp.status}`); }
+      if (!resp.ok) { await throwIfBadResponse(resp, "SOFI Voice"); }
       if (!resp.body) throw new Error("No body");
 
       const reader = resp.body.getReader();
@@ -245,7 +246,7 @@ export default function VoiceMode({ onSwitchToText }: { onSwitchToText: () => vo
         speakText(assistantContent);
       }
     } catch (e: any) {
-      if (e.name !== "AbortError") { toast.error(e.message || "Failed"); setVoiceState("idle"); }
+      if (e.name !== "AbortError") { handleAiError(e, "SOFI Voice"); setVoiceState("idle"); }
     }
   }, [messages, speakText]);
 

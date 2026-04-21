@@ -16,6 +16,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
 import ReactMarkdown from "react-markdown";
 
 const FILE_ICONS: Record<string, typeof FileText> = {
@@ -619,7 +620,7 @@ export default function SmartWorkspace() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
         body: JSON.stringify({ messages: [{ role: "user", content: text }] }),
       });
-      if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `Error ${resp.status}`); }
+      if (!resp.ok) { await throwIfBadResponse(resp, "AI generation"); }
       if (!resp.body) throw new Error("No body");
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
@@ -640,7 +641,7 @@ export default function SmartWorkspace() {
         }
       }
       setGeneratedItems((prev) => [{ id: crypto.randomUUID(), prompt: text.slice(0, 200), content, createdAt: new Date().toISOString() }, ...prev]);
-    } catch (e: any) { toast.error(e.message || "Failed"); }
+    } catch (e: any) { handleAiError(e, "AI generation"); }
     finally { setAiLoading(false); setIsStreaming(false); setAiInput(""); }
   };
 

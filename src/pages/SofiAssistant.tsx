@@ -8,6 +8,7 @@ import {
   Volume2, VolumeX, Square, Brain, Upload, FileText, X, Paperclip,
 } from "lucide-react";
 import { toast } from "sonner";
+import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
 import ReactMarkdown from "react-markdown";
 import VoiceMode from "@/components/sofi/VoiceMode";
 import AdaptiveInsights from "@/components/sofi/AdaptiveInsights";
@@ -327,7 +328,7 @@ function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: strin
           })),
         }),
       });
-      if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `Error ${resp.status}`); }
+      if (!resp.ok) { await throwIfBadResponse(resp, "SOFI Chat"); }
       if (!resp.body) throw new Error("No response body");
 
       const reader = resp.body.getReader();
@@ -358,7 +359,7 @@ function ChatSection({ initialPrompt, onPromptConsumed }: { initialPrompt: strin
         }
       }
     } catch (e: any) {
-      toast.error(e.message || "Failed to get response");
+      handleAiError(e, "SOFI Chat");
       if (!assistantContent) setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
     } finally { setIsLoading(false); }
   };

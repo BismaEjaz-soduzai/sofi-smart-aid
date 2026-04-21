@@ -7,6 +7,7 @@ import { useNotes, useDeleteNote } from "@/hooks/useNotes";
 import { usePlans } from "@/hooks/usePlans";
 import { useFocusTimer } from "@/contexts/FocusTimerContext";
 import { toast } from "sonner";
+import { handleAiError } from "@/lib/aiError";
 
 type ActionState = "idle" | "listening" | "processing" | "speaking";
 
@@ -283,7 +284,7 @@ export default function VoiceNavigator() {
       else speak("I did not get a response. Please try again.");
     } catch (err: any) {
       console.error("Voice command failed", err);
-      toast.error(err?.message || "Command failed");
+      handleAiError(err, "Voice command");
       speak("Sorry, something went wrong");
     }
   }, [navigate, location.pathname, timer, tasksQuery.data, notesQuery.data, toggleTask, deleteNote, callStudyChat, speak]);
