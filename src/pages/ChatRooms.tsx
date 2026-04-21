@@ -445,6 +445,23 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
             )}
 
             {messages.map((msg) => {
+              // Render system messages with embedded call URL specially
+              if (msg.message_type === "system" && msg.content.includes("||CALL_URL:")) {
+                const [displayText, callUrl] = msg.content.split("||CALL_URL:");
+                return (
+                  <div key={msg.id} className="flex justify-center">
+                    <div className="flex items-center gap-2 bg-muted/60 border border-border rounded-full px-3 py-1.5">
+                      <span className="text-[11px] text-muted-foreground">{displayText}</span>
+                      <button
+                        onClick={() => call.joinCall(callUrl)}
+                        className="text-[11px] font-semibold bg-success text-success-foreground hover:opacity-90 rounded-full px-2.5 py-0.5 transition-opacity"
+                      >
+                        📞 Join Call
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
               const repliedMsg = msg.reply_to_id ? messageMap.get(msg.reply_to_id) : null;
               const repliedSender = repliedMsg ? (memberMap.get(repliedMsg.user_id) || "User") : null;
               return (
