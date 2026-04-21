@@ -6,12 +6,26 @@ export interface ActiveCall {
   isVideo: boolean;
   startedBy: string;
   startedAt: number;
+  roomName: string;
+}
+
+export function makeSessionRoomName(roomId: string): string {
+  const slug = roomId.replace(/-/g, "").slice(0, 16);
+  const stamp = Date.now().toString(36).slice(-4);
+  return `sofi-${slug}-${stamp}`;
 }
 
 export function makeSessionCallUrl(roomId: string): string {
-  const slug = roomId.replace(/-/g, "").slice(0, 16);
-  const stamp = Date.now().toString(36).slice(-4);
-  return `https://meet.jit.si/sofi-${slug}-${stamp}`;
+  return `https://meet.jit.si/${makeSessionRoomName(roomId)}`;
+}
+
+function roomNameFromUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.pathname.replace(/^\//, "") || "sofi-room";
+  } catch {
+    return "sofi-room";
+  }
 }
 
 export function useCallSignal(roomId: string) {
@@ -19,40 +33,11 @@ export function useCallSignal(roomId: string) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
 
-  const popupRef = useRef<Window | null>(null);
-  const pollRef = useRef<number | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recTimerRef = useRef<number | null>(null);
-
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      window.clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }, []);
-
-  const beginPolling = useCallback(() => {
-    stopPolling();
-    pollRef.current = window.setInterval(() => {
-      if (!popupRef.current || popupRef.current.closed) {
-        stopPolling();
-        popupRef.current = null;
-        setActiveCall(null);
-      }
-    }, 1500);
-  }, [stopPolling]);
-
-  const openPopup = useCallback((url: string) => {
-    const win = window.open(url, "sofi-call", "width=1280,height=800,toolbar=no,menubar=no");
-    if (!win) {
-      toast.error("Popup blocked — please allow popups for this site");
-      return null;
-    }
-    popupRef.current = win;
-    beginPolling();
-    return win;
-  }, [beginPolling]);
+  const recStreamsRef = useRef<MediaStream[]>([]);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const startCall = useCallback(
     async (
@@ -60,14 +45,14 @@ export function useCallSignal(roomId: string) {
       displayName: string,
       onPostMessage?: (displayText: string, callUrl: string) => void | Promise<void>,
     ) => {
-      const callUrl = makeSessionCallUrl(roomId);
-      const win = openPopup(callUrl);
-      if (!win) return;
+      const roomName = makeSessionRoomName(roomId);
+      const callUrl = `https://meet.jit.si/${roomName}`;
       const call: ActiveCall = {
         callUrl,
         isVideo,
         startedBy: displayName,
         startedAt: Date.now(),
+        roomName,
       };
       setActiveCall(call);
       const displayText = isVideo
@@ -79,45 +64,79 @@ export function useCallSignal(roomId: string) {
         console.error("Failed to post call message", err);
       }
     },
-    [roomId, openPopup],
+    [roomId],
   );
 
   const joinCall = useCallback(
     (callUrl: string) => {
-      // Reuse same window name "sofi-call" — focuses existing if open
-      openPopup(callUrl);
-      if (!activeCall) {
-        setActiveCall({
+      setActiveCall((prev) => {
+        if (prev && prev.callUrl === callUrl) return prev;
+        return {
           callUrl,
           isVideo: true,
-          startedBy: "Someone",
-          startedAt: Date.now(),
-        });
-      }
+          startedBy: prev?.startedBy ?? "Someone",
+          startedAt: prev?.startedAt ?? Date.now(),
+          roomName: roomNameFromUrl(callUrl),
+        };
+      });
     },
-    [openPopup, activeCall],
+    [],
   );
 
   const endCall = useCallback(() => {
-    try {
-      popupRef.current?.close();
-    } catch {
-      // ignore
-    }
-    popupRef.current = null;
-    stopPolling();
     setActiveCall(null);
-  }, [stopPolling]);
+  }, []);
+
+  const stopAllRecStreams = () => {
+    recStreamsRef.current.forEach((s) => s.getTracks().forEach((t) => t.stop()));
+    recStreamsRef.current = [];
+    if (audioCtxRef.current) {
+      try { audioCtxRef.current.close(); } catch { /* noop */ }
+      audioCtxRef.current = null;
+    }
+  };
 
   const startRecording = useCallback(
     async (onSave: (blob: Blob, filename: string) => void | Promise<void>) => {
       try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({
+        // Capture screen with system audio (for the call audio)
+        const display = await navigator.mediaDevices.getDisplayMedia({
           video: true,
           audio: true,
         });
+
+        // Capture mic so the user's voice is also recorded
+        let mic: MediaStream | null = null;
+        try {
+          mic = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        } catch (err) {
+          console.warn("Mic capture denied — recording without microphone", err);
+        }
+
+        // Merge audio tracks (display audio + mic) using WebAudio
+        const ctx = new AudioContext();
+        audioCtxRef.current = ctx;
+        const dest = ctx.createMediaStreamDestination();
+
+        const displayAudioTracks = display.getAudioTracks();
+        if (displayAudioTracks.length > 0) {
+          const src = ctx.createMediaStreamSource(new MediaStream(displayAudioTracks));
+          src.connect(dest);
+        }
+        if (mic && mic.getAudioTracks().length > 0) {
+          const src = ctx.createMediaStreamSource(mic);
+          src.connect(dest);
+        }
+
+        const mixed = new MediaStream([
+          ...display.getVideoTracks(),
+          ...dest.stream.getAudioTracks(),
+        ]);
+
+        recStreamsRef.current = mic ? [display, mic] : [display];
+
         chunksRef.current = [];
-        const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+        const recorder = new MediaRecorder(mixed, { mimeType: "video/webm" });
         recorderRef.current = recorder;
 
         recorder.ondataavailable = (e) => {
@@ -127,8 +146,8 @@ export function useCallSignal(roomId: string) {
         recorder.onstop = async () => {
           const blob = new Blob(chunksRef.current, { type: "video/webm" });
           chunksRef.current = [];
-          stream.getTracks().forEach((t) => t.stop());
-          const filename = `recording-${new Date().toISOString()}.webm`;
+          stopAllRecStreams();
+          const filename = `recording-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
           try {
             await onSave(blob, filename);
           } catch (err) {
@@ -137,8 +156,8 @@ export function useCallSignal(roomId: string) {
           }
         };
 
-        // Stop if user ends share via browser UI
-        stream.getVideoTracks()[0].addEventListener("ended", () => {
+        // If user ends share via browser UI
+        display.getVideoTracks()[0].addEventListener("ended", () => {
           if (recorder.state !== "inactive") recorder.stop();
           setIsRecording(false);
           if (recTimerRef.current) {
@@ -153,10 +172,11 @@ export function useCallSignal(roomId: string) {
         recTimerRef.current = window.setInterval(() => {
           setRecordingTime((t) => t + 1);
         }, 1000);
-        toast.success("Recording started");
+        toast.success("Recording started (screen + mic)");
       } catch (err) {
         console.error("startRecording error", err);
         toast.error("Could not start recording");
+        stopAllRecStreams();
       }
     },
     [],
@@ -184,13 +204,13 @@ export function useCallSignal(roomId: string) {
 
   useEffect(() => {
     return () => {
-      stopPolling();
       if (recTimerRef.current) window.clearInterval(recTimerRef.current);
       if (recorderRef.current && recorderRef.current.state !== "inactive") {
         try { recorderRef.current.stop(); } catch { /* noop */ }
       }
+      stopAllRecStreams();
     };
-  }, [stopPolling]);
+  }, []);
 
   return {
     activeCall,
