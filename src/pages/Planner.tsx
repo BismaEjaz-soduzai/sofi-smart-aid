@@ -282,6 +282,17 @@ export default function Planner() {
     setView("create");
   };
 
+  const [templateLoading, setTemplateLoading] = useState<string | null>(null);
+  const handleTemplateAI = async (t: typeof TEMPLATES[0]) => {
+    if (templateLoading) return;
+    setTemplateLoading(t.title);
+    setForm((f) => ({ ...f, title: t.title, goal: t.goal, category: t.category, emoji: t.emoji, color_tag: t.color, duration: t.duration, source_type: "ai" }));
+    setAiPrompt(TEMPLATE_PROMPTS[t.title] || `Create a ${t.duration} plan for: ${t.goal}`);
+    setView("ai-generate");
+    // Kick off generation on next tick after state settles
+    setTimeout(() => { handleAiGenerate(); setTemplateLoading(null); }, 50);
+  };
+
   const buildContextualPrompt = (extra: string) => {
     // Compute real day count from dates if both are set
     let dayInfo = "";
