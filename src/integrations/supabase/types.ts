@@ -596,12 +596,42 @@ export type Database = {
         }
         Relationships: []
       }
+      workspace_room_members: {
+        Row: {
+          id: string
+          joined_at: string
+          room_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          room_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          room_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_room_members_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "workspace_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workspace_rooms: {
         Row: {
           color: string
           created_at: string
           emoji: string
           id: string
+          invite_code: string | null
           name: string
           updated_at: string
           user_id: string
@@ -611,6 +641,7 @@ export type Database = {
           created_at?: string
           emoji?: string
           id?: string
+          invite_code?: string | null
           name: string
           updated_at?: string
           user_id: string
@@ -620,6 +651,7 @@ export type Database = {
           created_at?: string
           emoji?: string
           id?: string
+          invite_code?: string | null
           name?: string
           updated_at?: string
           user_id?: string
@@ -657,6 +689,10 @@ export type Database = {
         Args: { _room_id: string; _user_id: string }
         Returns: boolean
       }
+      is_workspace_room_member: {
+        Args: { _room_id: string; _user_id: string }
+        Returns: boolean
+      }
       join_chat_room_by_invite: {
         Args: { _display_name?: string; _invite_code: string }
         Returns: {
@@ -671,6 +707,25 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "chat_rooms"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      join_workspace_room_by_code: {
+        Args: { _invite_code: string }
+        Returns: {
+          color: string
+          created_at: string
+          emoji: string
+          id: string
+          invite_code: string | null
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "workspace_rooms"
           isOneToOne: true
           isSetofReturn: false
         }

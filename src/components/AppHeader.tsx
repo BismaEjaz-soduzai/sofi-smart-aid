@@ -5,7 +5,6 @@ import { useState, useRef, useEffect } from "react";
 import { Menu, ChevronDown, User, LogOut, Settings } from "lucide-react";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { NotificationCenter } from "@/components/NotificationCenter";
-import { GlobalVoiceButton } from "@/components/GlobalVoiceButton";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -55,7 +54,6 @@ export function AppHeader() {
 
       <div className="flex items-center gap-1.5">
         <GlobalSearch />
-        <GlobalVoiceButton />
         <NotificationCenter />
         <div className="w-px h-5 bg-border mx-1.5" />
 

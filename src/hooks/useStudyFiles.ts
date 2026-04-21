@@ -26,9 +26,13 @@ export interface WorkspaceRoom {
   invite_code: string;
 }
 
-export function makeInviteCode(id: string): string {
-  const clean = id.replace(/-/g, "").toUpperCase();
-  return `${clean.slice(0, 3)}-${clean.slice(3, 6)}`;
+export function normalizeInviteCode(code: string) {
+  return code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+}
+
+export function formatInviteCode(code: string) {
+  const clean = normalizeInviteCode(code);
+  return clean.length > 4 ? `${clean.slice(0, 4)}-${clean.slice(4, 8)}` : clean;
 }
 
 export function useWorkspaceRooms() {
@@ -43,7 +47,10 @@ export function useWorkspaceRooms() {
         .select("*")
         .order("created_at", { ascending: true });
       if (error) throw error;
-      return (data || []).map((r) => ({ ...r, invite_code: makeInviteCode(r.id) })) as WorkspaceRoom[];
+      return ((data || []) as any[]).map((room) => ({
+        ...room,
+        invite_code: formatInviteCode(room.invite_code || room.id),
+      })) as WorkspaceRoom[];
     },
     enabled: !!user,
   });
@@ -76,13 +83,25 @@ export function useWorkspaceRooms() {
 
   const joinRoomByCode = useMutation({
     mutationFn: async (code: string) => {
-      const target = code.trim().toUpperCase();
+      const target = normalizeInviteCode(code);
       if (!target) throw new Error("Enter a code");
-      const { data, error } = await supabase.from("workspace_rooms").select("*");
+
+      const { data, error } = await (supabase as any).rpc("join_workspace_room_by_code", {
+        _invite_code: target,
+      });
+
       if (error) throw error;
-      const found = (data || []).find((r) => makeInviteCode(r.id) === target);
-      if (!found) throw new Error("Room not found");
-      return { ...found, invite_code: makeInviteCode(found.id) } as WorkspaceRoom;
+      if (!data) throw new Error("Room not found");
+
+      return {
+        ...(data as any),
+        invite_code: formatInviteCode((data as any).invite_code || target),
+      } as WorkspaceRoom;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workspace-rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["study-files"] });
+      toast.success("Joined room");
     },
     onError: (err: Error) => toast.error(err.message),
   });
