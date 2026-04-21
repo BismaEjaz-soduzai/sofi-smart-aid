@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, X, Send, MessageSquare, Volume2, Loader2, Sparkles } from "lucide-react";
-import { toast } from "sonner";
+import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
 import ReactMarkdown from "react-markdown";
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/study-chat`;
@@ -58,7 +58,7 @@ export function GlobalVoiceButton() {
           messages: next.map((m) => ({ role: m.role, content: m.content })),
         }),
       });
-      if (!resp.ok || !resp.body) throw new Error("Request failed");
+      if (!resp.ok || !resp.body) { await throwIfBadResponse(resp, "Quick SOFI"); throw new Error("No response"); }
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -87,7 +87,7 @@ export function GlobalVoiceButton() {
       }
       if (voiceMode && assistant) speak(assistant);
     } catch (e: any) {
-      toast.error(e.message || "Request failed");
+      handleAiError(e, "Quick SOFI");
     } finally {
       setThinking(false);
     }
