@@ -23,6 +23,10 @@ export function useFocusTimer() {
   return ctx;
 }
 
+export function useFocusTimerOptional() {
+  return useContext(FocusTimerContext);
+}
+
 export function FocusTimerProvider({ children }: { children: ReactNode }) {
   const [duration, setDurationState] = useState(25);
   const [seconds, setSeconds] = useState(25 * 60);

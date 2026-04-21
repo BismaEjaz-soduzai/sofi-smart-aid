@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Timer, X, Pause, Play, RotateCcw } from "lucide-react";
-import { useFocusTimer } from "@/contexts/FocusTimerContext";
+import { useFocusTimerOptional } from "@/contexts/FocusTimerContext";
 import { useLocation } from "react-router-dom";
 
 export default function FloatingFocusTimer() {
-  const { seconds, running, setRunning, reset, duration, sessionType } = useFocusTimer();
-  const [dismissed, setDismissed] = useState(false);
-  const [position, setPosition] = useState({ x: 20, y: 20 });
+  const ctx = useFocusTimerOptional();
   const location = useLocation();
+  const [dismissed, setDismissed] = useState(false);
+
+  if (!ctx) return null;
+  const { seconds, running, setRunning, reset, duration, sessionType } = ctx;
 
   // Only show when running and not on the assistant/focus page
   if (!running || location.pathname === "/assistant" || dismissed) return null;
