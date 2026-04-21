@@ -1337,3 +1337,366 @@ function PlanDetail({ plan, navigate, onBack, onDelete, onUpdate }: { plan: Plan
     </motion.div>
   );
 }
+
+// ─── Sessions Section: Timeline + Week View + Burn-down + Confetti ───
+type SessionRow = { id: string; plan_id: string; title: string; date: string | null; is_completed: boolean; note?: string; created_at?: string };
+
+function SessionsSection({
+  plan, sessions, showAdd, setShowAdd, sessionForm, setSessionForm, addSession, onToggle, onQuickAddDate,
+}: {
+  plan: Plan;
+  sessions: SessionRow[];
+  showAdd: boolean;
+  setShowAdd: (v: boolean) => void;
+  sessionForm: { title: string; date: string; note: string };
+  setSessionForm: (f: { title: string; date: string; note: string }) => void;
+  addSession: () => Promise<void>;
+  onToggle: (s: SessionRow) => Promise<void>;
+  onQuickAddDate: (date: string) => void;
+}) {
+  const [view, setView] = useState<"timeline" | "week">("timeline");
+  const [weekStart, setWeekStart] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [burst, setBurst] = useState<string | null>(null);
+
+  const sorted = useMemo(() => {
+    return [...sessions].sort((a, b) => {
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return a.date.localeCompare(b.date);
+    });
+  }, [sessions]);
+
+  // Group by week
+  const weekGroups = useMemo(() => {
+    const groups = new Map<string, { label: string; weekStart: Date; items: SessionRow[] }>();
+    const undated: SessionRow[] = [];
+    sorted.forEach((s) => {
+      if (!s.date) { undated.push(s); return; }
+      const d = parseISO(s.date);
+      const ws = startOfWeek(d, { weekStartsOn: 1 });
+      const key = format(ws, "yyyy-MM-dd");
+      if (!groups.has(key)) {
+        const we = endOfWeek(d, { weekStartsOn: 1 });
+        groups.set(key, { label: `${format(ws, "MMM d")}–${format(we, "MMM d")}`, weekStart: ws, items: [] });
+      }
+      groups.get(key)!.items.push(s);
+    });
+    const arr = Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    return { groups: arr, undated };
+  }, [sorted]);
+
+  // Burn-down data
+  const burnData = useMemo(() => {
+    if (!plan.start_date || !plan.end_date) return null;
+    const start = parseISO(plan.start_date);
+    const end = parseISO(plan.end_date);
+    const days = differenceInDays(end, start);
+    if (days <= 0 || sessions.length === 0) return null;
+    const sample = Math.max(1, Math.floor(days / 12));
+    const points: { date: string; ideal: number; actual: number }[] = [];
+    const total = sessions.length;
+    const completedTimes = sessions
+      .filter((s) => s.is_completed && s.created_at)
+      .map((s) => parseISO(s.created_at!))
+      .sort((a, b) => a.getTime() - b.getTime());
+    for (let i = 0; i <= days; i += sample) {
+      const d = addDays(start, i);
+      const ideal = Math.max(0, total - (total * (i / days)));
+      const completedByThen = completedTimes.filter((t) => t <= d).length;
+      const actual = Math.max(0, total - completedByThen);
+      points.push({ date: format(d, "MMM d"), ideal: Number(ideal.toFixed(1)), actual });
+    }
+    return points;
+  }, [plan.start_date, plan.end_date, sessions]);
+
+  const handleToggle = async (s: SessionRow) => {
+    if (!s.is_completed) setBurst(s.id);
+    await onToggle(s);
+    if (!s.is_completed) setTimeout(() => setBurst(null), 700);
+  };
+
+  const jumpToToday = () => {
+    setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+    if (view === "week") return;
+    setTimeout(() => {
+      const today = format(new Date(), "yyyy-MM-dd");
+      document.getElementById(`session-day-${today}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Sessions / Milestones</p>
+          <span className="text-[10px] text-muted-foreground">· {sessions.filter((s) => s.is_completed).length}/{sessions.length}</span>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex bg-muted/40 rounded-lg p-0.5">
+            <button onClick={() => setView("timeline")} className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${view === "timeline" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+              <LayoutList className="w-3 h-3" /> Timeline
+            </button>
+            <button onClick={() => setView("week")} className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${view === "week" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+              <CalendarDays className="w-3 h-3" /> Week
+            </button>
+          </div>
+          <button onClick={jumpToToday} className="px-2.5 py-1 rounded-md bg-primary/10 text-primary text-[11px] font-semibold hover:bg-primary/20 transition-colors">Jump to today</button>
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-primary text-primary-foreground text-[11px] font-medium hover:opacity-90 transition-opacity"><Plus className="w-3 h-3" /> Add</button>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {showAdd && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+            <div className="glass-card p-4 space-y-3">
+              <input value={sessionForm.title} onChange={(e) => setSessionForm({ ...sessionForm, title: e.target.value })} placeholder="Session title" autoFocus className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring" />
+              <div className="flex gap-2">
+                <input type="date" value={sessionForm.date} onChange={(e) => setSessionForm({ ...sessionForm, date: e.target.value })} className="flex-1 bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none" />
+                <button onClick={addSession} disabled={!sessionForm.title.trim()} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-40">Add</button>
+                <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-lg bg-muted text-muted-foreground text-sm font-medium">Cancel</button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {burnData && burnData.length > 1 && view === "timeline" && (
+        <div className="glass-card p-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] font-semibold text-foreground flex items-center gap-1.5"><TrendingUp className="w-3 h-3 text-primary" /> Burn-down</p>
+            <p className="text-[10px] text-muted-foreground">Ideal vs Actual remaining</p>
+          </div>
+          <div className="h-[140px] -ml-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={burnData} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="actualBurn" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} width={24} />
+                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 11 }} />
+                <Area type="monotone" dataKey="ideal" stroke="hsl(var(--muted-foreground))" strokeDasharray="4 4" strokeWidth={1.5} fill="none" />
+                <Area type="monotone" dataKey="actual" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#actualBurn)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {sessions.length === 0 && (
+        <div className="text-center py-10 bg-muted/20 rounded-xl border border-dashed border-border">
+          <Target className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+          <p className="text-sm text-muted-foreground">No sessions yet</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Add milestones to track your progress</p>
+        </div>
+      )}
+
+      {view === "timeline" && sessions.length > 0 && (
+        <div className="space-y-5">
+          {weekGroups.groups.map(([key, grp], gi) => (
+            <div key={key}>
+              <div className="flex items-center gap-2 mb-2">
+                <h4 className="text-[11px] font-bold text-foreground uppercase tracking-wider">Week {gi + 1}</h4>
+                <span className="text-[10px] text-muted-foreground">{grp.label}</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+              <TimelineList items={grp.items} burst={burst} onToggle={handleToggle} onQuickAddDate={onQuickAddDate} />
+            </div>
+          ))}
+          {weekGroups.undated.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <h4 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Undated</h4>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+              <TimelineList items={weekGroups.undated} burst={burst} onToggle={handleToggle} onQuickAddDate={onQuickAddDate} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {view === "week" && (
+        <WeekView
+          weekStart={weekStart}
+          setWeekStart={setWeekStart}
+          sessions={sorted}
+          onToggle={handleToggle}
+          onAddOnDay={(d) => onQuickAddDate(format(d, "yyyy-MM-dd"))}
+          burst={burst}
+        />
+      )}
+    </div>
+  );
+}
+
+function TimelineList({ items, burst, onToggle, onQuickAddDate }: {
+  items: SessionRow[];
+  burst: string | null;
+  onToggle: (s: SessionRow) => Promise<void>;
+  onQuickAddDate: (date: string) => void;
+}) {
+  return (
+    <div className="relative pl-1">
+      {items.map((s, idx) => {
+        const sd = s.date ? parseISO(s.date) : null;
+        const overdue = sd && isPast(sd) && !isToday(sd) && !s.is_completed;
+        const today_ = sd && isToday(sd);
+        const tomorrow_ = sd && isTomorrow(sd);
+        const future = sd && !isPast(sd) && !today_ && !s.is_completed;
+        const next = items[idx + 1];
+        const lineSolid = s.is_completed || (sd ? isPast(sd) : false);
+        const nodeBg = s.is_completed ? "bg-success border-success"
+          : today_ ? "bg-primary border-primary"
+          : tomorrow_ ? "bg-warning border-warning"
+          : overdue ? "bg-destructive border-destructive"
+          : "bg-card border-muted-foreground/30";
+        const showPulse = today_ && !s.is_completed;
+
+        let midDate: string | null = null;
+        if (next && s.date && next.date) {
+          const a = parseISO(s.date); const b = parseISO(next.date);
+          const mid = new Date((a.getTime() + b.getTime()) / 2);
+          midDate = format(mid, "yyyy-MM-dd");
+        }
+
+        return (
+          <div key={s.id} id={s.date ? `session-day-${s.date}` : undefined} className="relative">
+            {idx < items.length - 1 && (
+              <div className={`absolute left-[11px] top-7 bottom-[-12px] w-px ${lineSolid ? "bg-border" : "border-l border-dashed border-border"}`} />
+            )}
+            <motion.div initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.03 }}
+              className="flex items-start gap-3 py-2">
+              <div className="relative flex-shrink-0 mt-0.5">
+                <button
+                  onClick={() => onToggle(s)}
+                  className={`w-[22px] h-[22px] rounded-full border-2 flex items-center justify-center transition-all ${nodeBg} ${showPulse ? "animate-pulse" : ""}`}
+                  title={s.is_completed ? "Mark incomplete" : "Mark complete"}
+                >
+                  {s.is_completed && <Check className="w-3 h-3 text-success-foreground" />}
+                </button>
+                {burst === s.id && (
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    {Array.from({ length: 6 }).map((_, i) => {
+                      const angle = (Math.PI * 2 * i) / 6;
+                      const dx = Math.cos(angle) * 30;
+                      const dy = Math.sin(angle) * 30;
+                      const colors = ["bg-primary", "bg-success", "bg-warning", "bg-info", "bg-destructive", "bg-primary"];
+                      return (
+                        <motion.div key={i}
+                          initial={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+                          animate={{ opacity: 0, scale: 0.4, x: dx, y: dy, rotate: 180 }}
+                          transition={{ duration: 0.6, ease: "easeOut" }}
+                          className={`absolute w-1.5 h-1.5 ${colors[i]} rounded-sm`}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className={`flex-1 min-w-0 rounded-lg px-3 py-2 border transition-all ${
+                s.is_completed ? "opacity-60 bg-muted/20 border-border" :
+                overdue ? "bg-destructive/5 border-destructive/30" :
+                today_ ? "bg-primary/5 border-primary/30" :
+                "bg-card border-border"
+              }`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className={`text-sm font-medium ${s.is_completed ? "text-muted-foreground line-through" : "text-foreground"}`}>{s.title}</p>
+                  {!s.is_completed && today_ && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">TODAY</span>}
+                  {!s.is_completed && tomorrow_ && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-warning text-warning-foreground">TOMORROW</span>}
+                  {overdue && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-destructive text-destructive-foreground flex items-center gap-0.5"><AlertCircle className="w-2.5 h-2.5" /> OVERDUE</span>}
+                </div>
+                {s.date && <p className="text-[10px] text-muted-foreground mt-0.5">{format(parseISO(s.date), "EEE, MMM d, yyyy")}</p>}
+                {s.note && <p className="text-[11px] text-muted-foreground mt-1 italic">{s.note}</p>}
+              </div>
+            </motion.div>
+            {midDate && idx < items.length - 1 && (
+              <div className="relative h-1 group">
+                <button
+                  onClick={() => onQuickAddDate(midDate!)}
+                  className="absolute left-[5px] -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-primary/20 text-primary text-[10px] font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-primary hover:text-primary-foreground transition-all"
+                  title={`Insert session on ${midDate}`}
+                >+</button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function WeekView({
+  weekStart, setWeekStart, sessions, onToggle, onAddOnDay, burst,
+}: {
+  weekStart: Date;
+  setWeekStart: (d: Date) => void;
+  sessions: SessionRow[];
+  onToggle: (s: SessionRow) => Promise<void>;
+  onAddOnDay: (d: Date) => void;
+  burst: string | null;
+}) {
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
+  const byDate = useMemo(() => {
+    const m = new Map<string, SessionRow[]>();
+    sessions.forEach((s) => { if (s.date) { const a = m.get(s.date) || []; a.push(s); m.set(s.date, a); } });
+    return m;
+  }, [sessions]);
+
+  const weekLabel = `${format(weekStart, "MMM d")} – ${format(addDays(weekStart, 6), "MMM d, yyyy")}`;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-foreground">{weekLabel}</p>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setWeekStart(subWeeks(weekStart, 1))} className="w-7 h-7 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center">‹</button>
+          <button onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))} className="px-2 py-1 rounded-md bg-primary/10 text-primary text-[10px] font-semibold hover:bg-primary/20 transition-colors">This week</button>
+          <button onClick={() => setWeekStart(addWeeks(weekStart, 1))} className="w-7 h-7 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center">›</button>
+        </div>
+      </div>
+      <div className="grid grid-cols-7 gap-1.5">
+        {days.map((d) => {
+          const key = format(d, "yyyy-MM-dd");
+          const items = byDate.get(key) || [];
+          const today_ = isToday(d);
+          return (
+            <div key={key} className={`rounded-lg border p-2 min-h-[140px] flex flex-col gap-1.5 transition-colors ${today_ ? "bg-primary/5 border-primary/30" : "bg-card border-border hover:border-primary/20"}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[9px] font-semibold uppercase text-muted-foreground">{format(d, "EEE")}</p>
+                  <p className={`text-sm font-bold ${today_ ? "text-primary" : "text-foreground"}`}>{format(d, "d")}</p>
+                </div>
+                <button onClick={() => onAddOnDay(d)} className="w-5 h-5 rounded bg-muted/60 hover:bg-primary/20 hover:text-primary text-muted-foreground text-[11px] font-bold flex items-center justify-center transition-colors" title="Add session">+</button>
+              </div>
+              <div className="space-y-1 flex-1 overflow-auto">
+                {items.length === 0 ? (
+                  <p className="text-[10px] text-muted-foreground/60 italic">—</p>
+                ) : items.map((s) => {
+                  const sd = parseISO(s.date!);
+                  const overdue = isPast(sd) && !isToday(sd) && !s.is_completed;
+                  const cls = s.is_completed
+                    ? "bg-muted/40 text-muted-foreground line-through"
+                    : overdue
+                    ? "bg-destructive/15 text-destructive"
+                    : "bg-primary/15 text-primary";
+                  return (
+                    <button key={s.id} onClick={() => onToggle(s)}
+                      className={`w-full text-left text-[10px] font-medium px-1.5 py-1 rounded ${cls} hover:opacity-80 transition-opacity truncate`}
+                      title={s.is_completed ? "Mark incomplete" : "Mark complete"}>
+                      {s.title}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
