@@ -30,6 +30,8 @@ export default function Dashboard() {
   const { data: notes = [] } = useNotes();
   const { data: plans = [] } = usePlans();
   const { seconds, running, setRunning, reset, duration, sessionType } = useFocusTimer();
+  const rewards = useRewards();
+  const activity = useDailyActivity(7);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -44,7 +46,7 @@ export default function Dashboard() {
   const recentNotes = notes.slice(0, 3);
 
   const completionRate = tasks.length > 0 ? Math.round((completedTasks.length / tasks.length) * 100) : 0;
-  const streak = completedTasks.length; // simplified streak
+  const totalMinutesWeek = activity.reduce((sum, d) => sum + d.minutes, 0);
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="p-6 lg:p-8 max-w-6xl mx-auto space-y-8">
