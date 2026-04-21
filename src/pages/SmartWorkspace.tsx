@@ -696,6 +696,25 @@ export default function SmartWorkspace() {
   const [newLinkUrl, setNewLinkUrl] = useState("");
   const [newLinkTitle, setNewLinkTitle] = useState("");
 
+  const handlePinLink = async () => {
+    if (!activeRoomId) {
+      toast.error("Open a room first to pin a link");
+      return;
+    }
+    const url = newLinkUrl.trim();
+    if (!url) {
+      toast.error("Paste a link to pin");
+      return;
+    }
+    try {
+      await addLink.mutateAsync({ url, title: newLinkTitle.trim() });
+      setNewLinkUrl("");
+      setNewLinkTitle("");
+    } catch {
+      /* toast handled in mutation */
+    }
+  };
+
   return (
     <div className="p-4 lg:p-6 max-w-5xl mx-auto space-y-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
