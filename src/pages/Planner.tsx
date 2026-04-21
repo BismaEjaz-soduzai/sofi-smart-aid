@@ -457,7 +457,7 @@ RULES YOU MUST FOLLOW:
 
       <div className="flex-1 overflow-auto">
         {tab === "calendar" ? (
-          <CalendarView plans={plans} tasks={tasks} />
+          <CalendarView plans={plans} tasks={tasks} planSessions={allSessions} onOpenPlan={(p) => { setSelectedPlan(p); setView("plan-detail"); }} onAddSession={async (planId, title, date) => { await createSession.mutateAsync({ plan_id: planId, title, date }); setAllSessions((cur) => [...cur, { id: `tmp-${Date.now()}`, plan_id: planId, title, date, is_completed: false }]); toast.success("Session added"); }} onToggleSession={toggleTodaySession} />
         ) : (
           <div className="p-4 lg:p-6 max-w-6xl mx-auto space-y-5">
             {view === "overview" && (
