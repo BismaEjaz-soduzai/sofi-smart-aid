@@ -687,34 +687,141 @@ function CalendarView({ plans, tasks }: { plans: Plan[]; tasks: any[] }) {
   );
 }
 
-// ─── Plan Card ──────────────────────────────
-function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
+// ─── Plan Card (redesigned, project-style) ──────────────────────────
+function PlanCard({ plan, sessions = [], hasToday = false, onClick }: { plan: Plan; sessions?: SessionLite[]; hasToday?: boolean; onClick: () => void }) {
   const style = CATEGORY_STYLES[plan.category] || CATEGORY_STYLES.study;
   const daysLeft = plan.end_date ? differenceInDays(parseISO(plan.end_date), new Date()) : null;
-  const isOverdue = daysLeft !== null && daysLeft < 0 && plan.status === "active";
-  const isDueSoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 3 && plan.status === "active";
+  const totalSessions = sessions.length;
+  const doneSessions = sessions.filter((s) => s.is_completed).length;
+  const sessionPct = totalSessions > 0 ? Math.round((doneSessions / totalSessions) * 100) : (plan.progress || 0);
+  const progress = Math.max(plan.progress || 0, sessionPct);
+
+  // Days-remaining pill styling
+  let pill: { text: string; cls: string } | null = null;
+  if (daysLeft === null) {
+    pill = { text: "No deadline", cls: "bg-muted text-muted-foreground" };
+  } else if (daysLeft < 0) {
+    pill = { text: `${Math.abs(daysLeft)}d overdue`, cls: "bg-destructive text-destructive-foreground" };
+  } else if (daysLeft === 0) {
+    pill = { text: "Due today", cls: "bg-destructive/10 text-destructive" };
+  } else if (daysLeft <= 6) {
+    pill = { text: `${daysLeft}d left`, cls: "bg-destructive/10 text-destructive" };
+  } else if (daysLeft <= 14) {
+    pill = { text: `${daysLeft}d left`, cls: "bg-warning/10 text-warning" };
+  } else {
+    pill = { text: `${daysLeft}d left`, cls: "bg-success/10 text-success" };
+  }
+
+  // Progress ring math
+  const r = 20, c = 2 * Math.PI * r;
+  const dash = (progress / 100) * c;
 
   return (
-    <motion.div whileHover={{ y: -2 }} onClick={onClick} className={`glass-card-hover p-4 cursor-pointer border ${isOverdue ? "border-destructive/40" : style.border} space-y-3 relative overflow-hidden`}>
-      {/* Gradient accent */}
-      <div className={`absolute inset-0 bg-gradient-to-br ${style.gradient} opacity-30 pointer-events-none`} />
-      <div className="relative">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-2.5"><span className="text-xl">{plan.emoji}</span><div><h3 className="text-sm font-semibold text-foreground">{plan.title}</h3><p className="text-[11px] text-muted-foreground line-clamp-1">{plan.goal}</p></div></div>
-          <div className="flex flex-col items-end gap-1">
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text} capitalize`}>{plan.category}</span>
-            {isOverdue && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-destructive/10 text-destructive flex items-center gap-0.5"><AlertCircle className="w-2.5 h-2.5" /> Overdue</span>}
-            {isDueSoon && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-warning/10 text-warning flex items-center gap-0.5"><Bell className="w-2.5 h-2.5" /> {daysLeft}d left</span>}
+    <motion.div
+      whileHover={{ scale: 1.02, y: -2 }}
+      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+      onClick={onClick}
+      className={`relative cursor-pointer rounded-2xl border ${style.border} bg-gradient-to-br ${style.gradient} hover:shadow-lg transition-shadow overflow-hidden`}
+    >
+      {/* Colored left border */}
+      <div className={`absolute left-0 top-0 bottom-0 w-1 ${style.text.replace("text-", "bg-")}`} />
+
+      <div className="p-4 pl-5 space-y-3 relative">
+        {/* Top row: emoji + title/goal + ring */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0 flex-1">
+            <span className="text-[40px] leading-none flex-shrink-0">{plan.emoji}</span>
+            <div className="min-w-0 pt-1">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-bold text-foreground truncate">{plan.title}</h3>
+                {hasToday && <span className="w-2 h-2 rounded-full bg-primary animate-pulse flex-shrink-0" title="Session due today" />}
+              </div>
+              {plan.goal && <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">{plan.goal}</p>}
+            </div>
+          </div>
+
+          {/* Progress ring */}
+          <div className="relative flex-shrink-0">
+            <svg width="48" height="48" viewBox="0 0 48 48" className="-rotate-90">
+              <circle cx="24" cy="24" r={r} stroke="hsl(var(--muted))" strokeWidth="4" fill="none" />
+              <circle
+                cx="24" cy="24" r={r}
+                stroke="hsl(var(--primary))" strokeWidth="4" fill="none"
+                strokeLinecap="round"
+                strokeDasharray={`${dash} ${c}`}
+                className="transition-all duration-500"
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-[10px] font-bold text-foreground">{progress}%</span>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-2">
-          {plan.duration && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{plan.duration}</span>}
-          {plan.start_date && <span className="flex items-center gap-1"><CalendarIcon className="w-3 h-3" />{format(parseISO(plan.start_date), "MMM d")}</span>}
-          {plan.end_date && <span>→ {format(parseISO(plan.end_date), "MMM d")}</span>}
-          <span className="flex items-center gap-1 ml-auto"><ChevronRight className="w-3 h-3" /></span>
+
+        {/* Days-left pill */}
+        <div className="flex items-center justify-between gap-2">
+          <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${pill.cls} flex items-center gap-1`}>
+            {daysLeft !== null && daysLeft < 0 ? <AlertCircle className="w-2.5 h-2.5" /> : <Clock className="w-2.5 h-2.5" />}
+            {pill.text}
+          </span>
+          {totalSessions > 0 && (
+            <span className="text-[10px] text-muted-foreground font-medium">{doneSessions}/{totalSessions} sessions</span>
+          )}
         </div>
-        {plan.progress > 0 && (<div className="h-1.5 bg-muted rounded-full overflow-hidden mt-2"><div className="h-full bg-primary rounded-full transition-all" style={{ width: `${Math.min(plan.progress, 100)}%` }} /></div>)}
+
+        {/* Mini progress bar for sessions */}
+        {totalSessions > 0 && (
+          <div className="h-1 bg-muted/60 rounded-full overflow-hidden">
+            <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${sessionPct}%` }} />
+          </div>
+        )}
+
+        {/* Footer row: category badge + chevron */}
+        <div className="flex items-center justify-between pt-1">
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text} capitalize`}>{plan.category}</span>
+          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+        </div>
       </div>
+    </motion.div>
+  );
+}
+
+// ─── Plan Row (List view) ───────────────────────────────────────────
+function PlanRow({ plan, sessions = [], overdue = false, onClick }: { plan: Plan; sessions?: SessionLite[]; overdue?: boolean; onClick: () => void }) {
+  const style = CATEGORY_STYLES[plan.category] || CATEGORY_STYLES.study;
+  const daysLeft = plan.end_date ? differenceInDays(parseISO(plan.end_date), new Date()) : null;
+  const totalSessions = sessions.length;
+  const doneSessions = sessions.filter((s) => s.is_completed).length;
+  const sessionPct = totalSessions > 0 ? Math.round((doneSessions / totalSessions) * 100) : (plan.progress || 0);
+
+  let pillCls = "bg-muted text-muted-foreground", pillText = "No deadline";
+  if (daysLeft !== null) {
+    if (daysLeft < 0) { pillCls = "bg-destructive text-destructive-foreground"; pillText = `${Math.abs(daysLeft)}d overdue`; }
+    else if (daysLeft <= 6) { pillCls = "bg-destructive/10 text-destructive"; pillText = `${daysLeft}d left`; }
+    else if (daysLeft <= 14) { pillCls = "bg-warning/10 text-warning"; pillText = `${daysLeft}d left`; }
+    else { pillCls = "bg-success/10 text-success"; pillText = `${daysLeft}d left`; }
+  }
+
+  return (
+    <motion.div whileHover={{ x: 2 }} onClick={onClick}
+      className={`flex items-center gap-3 p-3 rounded-xl border ${overdue ? "border-destructive/30" : "border-border"} bg-card hover:bg-muted/40 cursor-pointer transition-colors`}>
+      <span className="text-2xl flex-shrink-0">{plan.emoji}</span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-semibold text-foreground truncate">{plan.title}</p>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text} capitalize flex-shrink-0`}>{plan.category}</span>
+        </div>
+        {plan.goal && <p className="text-[11px] text-muted-foreground truncate">{plan.goal}</p>}
+        <div className="flex items-center gap-2 mt-1.5">
+          <div className="h-1 flex-1 bg-muted rounded-full overflow-hidden max-w-[200px]">
+            <div className="h-full bg-primary rounded-full" style={{ width: `${sessionPct}%` }} />
+          </div>
+          <span className="text-[10px] text-muted-foreground font-medium">{sessionPct}%</span>
+          {totalSessions > 0 && <span className="text-[10px] text-muted-foreground">· {doneSessions}/{totalSessions}</span>}
+        </div>
+      </div>
+      <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${pillCls} flex-shrink-0`}>{pillText}</span>
+      <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
     </motion.div>
   );
 }
