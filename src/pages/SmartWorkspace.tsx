@@ -16,6 +16,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
 import ReactMarkdown from "react-markdown";
 
 const FILE_ICONS: Record<string, typeof FileText> = {
@@ -568,22 +569,30 @@ export default function SmartWorkspace() {
     setIsPreviewLoading(true);
 
     try {
-      const [url, previewText] = await Promise.all([
-        getSignedUrl(file),
-        fetchFileContent(file),
-      ]);
-
-      if (!url && !previewText) {
-        toast.error("Could not open file preview");
+      const url = await getSignedUrl(file);
+      if (!url) {
+        toast.error("Could not generate file link");
         return;
       }
 
-      setViewingFile({
-        url,
-        name: file.file_name,
-        type: file.file_type,
-        previewText,
-      });
+      // For PDFs, images, txt — open directly in new tab (browser handles preview)
+      const directOpen = ["PDF", "TXT"].includes(file.file_type);
+      if (directOpen) {
+        window.open(url, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      // For Office docs — try to load extracted text preview in modal
+      const previewText = await fetchFileContent(file);
+      if (previewText) {
+        setViewingFile({ url, name: file.file_name, type: file.file_type, previewText });
+      } else {
+        // Fallback: just open the file URL
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    } catch (err) {
+      console.error("Open file error", err);
+      toast.error("Could not open file");
     } finally {
       setIsPreviewLoading(false);
     }
@@ -592,7 +601,25 @@ export default function SmartWorkspace() {
   const handleDownloadFile = async (file: StudyFile) => {
     const url = await getSignedUrl(file);
     if (!url) { toast.error("Could not generate download link"); return; }
-    const a = document.createElement("a"); a.href = url; a.download = file.file_name; a.click();
+    // Fetch as blob to force download (Storage URLs lack content-disposition)
+    try {
+      const blob = await fetch(url).then((r) => r.blob());
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = file.file_name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
+    } catch {
+      // Fallback to direct link
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.file_name;
+      a.target = "_blank";
+      a.click();
+    }
   };
 
   const handleFileAction = async (file: StudyFile, prompt: string) => {
@@ -619,7 +646,7 @@ export default function SmartWorkspace() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
         body: JSON.stringify({ messages: [{ role: "user", content: text }] }),
       });
-      if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `Error ${resp.status}`); }
+      if (!resp.ok) { await throwIfBadResponse(resp, "AI generation"); }
       if (!resp.body) throw new Error("No body");
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
@@ -640,7 +667,7 @@ export default function SmartWorkspace() {
         }
       }
       setGeneratedItems((prev) => [{ id: crypto.randomUUID(), prompt: text.slice(0, 200), content, createdAt: new Date().toISOString() }, ...prev]);
-    } catch (e: any) { toast.error(e.message || "Failed"); }
+    } catch (e: any) { handleAiError(e, "AI generation"); }
     finally { setAiLoading(false); setIsStreaming(false); setAiInput(""); }
   };
 

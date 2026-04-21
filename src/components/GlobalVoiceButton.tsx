@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, X, Send, MessageSquare, Volume2, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
 import ReactMarkdown from "react-markdown";
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/study-chat`;
@@ -58,7 +59,7 @@ export function GlobalVoiceButton() {
           messages: next.map((m) => ({ role: m.role, content: m.content })),
         }),
       });
-      if (!resp.ok || !resp.body) throw new Error("Request failed");
+      if (!resp.ok || !resp.body) { await throwIfBadResponse(resp, "Quick SOFI"); throw new Error("No response"); }
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -87,7 +88,7 @@ export function GlobalVoiceButton() {
       }
       if (voiceMode && assistant) speak(assistant);
     } catch (e: any) {
-      toast.error(e.message || "Request failed");
+      handleAiError(e, "Quick SOFI");
     } finally {
       setThinking(false);
     }
@@ -119,10 +120,11 @@ export function GlobalVoiceButton() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="w-8 h-8 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 flex items-center justify-center transition-colors"
+        aria-label="Open quick voice assistant"
+        className="w-9 h-9 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 flex items-center justify-center transition-colors flex-shrink-0"
         title="Quick voice"
       >
-        <Mic className="w-3.5 h-3.5" />
+        <Mic className="w-4 h-4" />
       </button>
 
       <AnimatePresence>

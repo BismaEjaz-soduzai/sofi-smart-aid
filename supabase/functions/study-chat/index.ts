@@ -229,6 +229,13 @@ async function streamLovable(
   });
 
   if (!upstream.ok || !upstream.body) {
+    // Preserve 429 / 402 so client can show friendly toasts
+    if (upstream.status === 429) {
+      return errorResponse("Rate limit reached — please wait a moment", 429);
+    }
+    if (upstream.status === 402) {
+      return errorResponse("AI credits exhausted — add credits in workspace settings", 402);
+    }
     const text = await upstream.text();
     return errorResponse(`Lovable AI error: ${text}`, upstream.status);
   }

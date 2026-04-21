@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { toast } from "sonner";
+import { handleAiError } from "@/lib/aiError";
 
 interface StudyInsight {
   type: "warning" | "suggestion" | "strength" | "goal";
@@ -36,7 +36,10 @@ export default function AdaptiveInsights({ onAskSofi }: { onAskSofi: (prompt: st
         body: JSON.stringify({ user_id: user.id }),
       });
 
-      if (!resp.ok) throw new Error("Failed to get insights");
+      if (!resp.ok) {
+        if (resp.status === 429 || resp.status === 402) handleAiError(new Error(`${resp.status}`), "Insights");
+        throw new Error(`${resp.status}`);
+      }
       const data = await resp.json();
       setInsights(data.insights || []);
       setHasLoaded(true);

@@ -13,6 +13,7 @@ import { useTasks } from "@/hooks/useTasks";
 import { supabase } from "@/integrations/supabase/client";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, parseISO, startOfWeek, endOfWeek, differenceInDays, isPast, isToday, isTomorrow } from "date-fns";
 import { toast } from "sonner";
+import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
 import ReactMarkdown from "react-markdown";
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/study-chat`;
@@ -146,7 +147,7 @@ export default function Planner() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
         body: JSON.stringify({ messages: [{ role: "user", content: `You are a study planner. Create a detailed structured plan with sessions/milestones. Format with clear titles, dates, and checkpoints:\n\n${aiPrompt}` }] }),
       });
-      if (!resp.ok) throw new Error("AI error");
+      if (!resp.ok) { await throwIfBadResponse(resp, "AI Plan"); }
       if (!resp.body) throw new Error("No body");
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
@@ -166,7 +167,7 @@ export default function Planner() {
           catch { buffer = line + "\n" + buffer; break; }
         }
       }
-    } catch (e: any) { toast.error(e.message || "Failed"); }
+    } catch (e: any) { handleAiError(e, "AI Plan"); }
     finally { setAiLoading(false); }
   };
 
