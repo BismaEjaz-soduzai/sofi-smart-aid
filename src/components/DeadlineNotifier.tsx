@@ -9,11 +9,23 @@ export function DeadlineNotifier() {
   const { data: plans } = usePlans();
   const notifiedRef = useRef<Set<string>>(new Set());
 
-  // Request browser notification permission on mount
+  // Request browser notification permission on first user interaction
+  // (browsers block permission prompts that fire on initial mount without a gesture)
   useEffect(() => {
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
+    if (!("Notification" in window)) return;
+    if (Notification.permission !== "default") return;
+
+    const ask = () => {
+      try { Notification.requestPermission(); } catch { /* noop */ }
+      window.removeEventListener("click", ask);
+      window.removeEventListener("keydown", ask);
+    };
+    window.addEventListener("click", ask, { once: true });
+    window.addEventListener("keydown", ask, { once: true });
+    return () => {
+      window.removeEventListener("click", ask);
+      window.removeEventListener("keydown", ask);
+    };
   }, []);
 
   useEffect(() => {

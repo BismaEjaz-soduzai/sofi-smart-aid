@@ -569,22 +569,30 @@ export default function SmartWorkspace() {
     setIsPreviewLoading(true);
 
     try {
-      const [url, previewText] = await Promise.all([
-        getSignedUrl(file),
-        fetchFileContent(file),
-      ]);
-
-      if (!url && !previewText) {
-        toast.error("Could not open file preview");
+      const url = await getSignedUrl(file);
+      if (!url) {
+        toast.error("Could not generate file link");
         return;
       }
 
-      setViewingFile({
-        url,
-        name: file.file_name,
-        type: file.file_type,
-        previewText,
-      });
+      // For PDFs, images, txt — open directly in new tab (browser handles preview)
+      const directOpen = ["PDF", "TXT"].includes(file.file_type);
+      if (directOpen) {
+        window.open(url, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      // For Office docs — try to load extracted text preview in modal
+      const previewText = await fetchFileContent(file);
+      if (previewText) {
+        setViewingFile({ url, name: file.file_name, type: file.file_type, previewText });
+      } else {
+        // Fallback: just open the file URL
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    } catch (err) {
+      console.error("Open file error", err);
+      toast.error("Could not open file");
     } finally {
       setIsPreviewLoading(false);
     }
@@ -593,7 +601,25 @@ export default function SmartWorkspace() {
   const handleDownloadFile = async (file: StudyFile) => {
     const url = await getSignedUrl(file);
     if (!url) { toast.error("Could not generate download link"); return; }
-    const a = document.createElement("a"); a.href = url; a.download = file.file_name; a.click();
+    // Fetch as blob to force download (Storage URLs lack content-disposition)
+    try {
+      const blob = await fetch(url).then((r) => r.blob());
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = file.file_name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
+    } catch {
+      // Fallback to direct link
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.file_name;
+      a.target = "_blank";
+      a.click();
+    }
   };
 
   const handleFileAction = async (file: StudyFile, prompt: string) => {

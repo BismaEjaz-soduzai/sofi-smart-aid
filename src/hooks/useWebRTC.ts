@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 export type CallState = "idle" | "calling" | "ringing" | "connected";
 
@@ -359,16 +360,32 @@ export function useWebRTC(roomId?: string) {
   const startCall = useCallback(async (memberIds: string[], videoEnabled = true, memberNames?: Map<string, string>) => {
     try {
       const otherMembers = memberIds.filter((memberId) => memberId !== user?.id);
-      if (otherMembers.length === 0) return;
+      if (otherMembers.length === 0) {
+        toast.error("No other members in this room to call");
+        return;
+      }
 
       const ready = await waitForChannelReady();
-      if (!ready) throw new Error("Call signaling is not ready yet");
+      if (!ready) {
+        toast.error("Call signaling is not ready — please try again in a moment");
+        throw new Error("Call signaling is not ready yet");
+      }
 
       let stream: MediaStream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: videoEnabled });
-      } catch {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      } catch (mediaErr: any) {
+        if (mediaErr?.name === "NotAllowedError") {
+          toast.error("🎤 Microphone/camera access denied", { description: "Allow access in your browser settings" });
+          throw mediaErr;
+        }
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          toast("Joined audio-only — camera unavailable");
+        } catch (audioErr) {
+          toast.error("Could not access microphone");
+          throw audioErr;
+        }
       }
 
       // Verify tracks are active
