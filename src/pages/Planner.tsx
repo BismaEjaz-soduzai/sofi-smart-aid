@@ -514,14 +514,28 @@ RULES YOU MUST FOLLOW:
 
                 {/* Templates */}
                 <motion.div variants={item}>
-                  <p className="text-xs font-medium text-muted-foreground mb-3">Quick Templates</p>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-medium text-muted-foreground">Quick Templates</p>
+                    <p className="text-[10px] text-muted-foreground">⚡ One-click AI generate · long-press to customize</p>
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                     {TEMPLATES.map((t) => {
                       const style = CATEGORY_STYLES[t.category] || CATEGORY_STYLES.study;
+                      const loading = templateLoading === t.title;
                       return (
-                        <button key={t.title} onClick={() => handleTemplate(t)} className={`flex items-center gap-3 p-3 rounded-xl border ${style.border} ${style.bg} hover:shadow-sm transition-all text-left group`}>
-                          <span className="text-xl">{t.emoji}</span>
-                          <div className="min-w-0"><p className={`text-xs font-semibold ${style.text} truncate`}>{t.title}</p><p className="text-[10px] text-muted-foreground">{t.duration}</p></div>
+                        <button
+                          key={t.title}
+                          onClick={() => handleTemplateAI(t)}
+                          onContextMenu={(e) => { e.preventDefault(); handleTemplate(t); }}
+                          disabled={loading}
+                          title="Click: AI generate · Right-click: edit form"
+                          className={`relative flex items-center gap-3 p-3 rounded-xl border ${style.border} ${style.bg} hover:shadow-md hover:scale-[1.02] active:scale-95 transition-all text-left group disabled:opacity-60`}>
+                          <span className="text-xl flex-shrink-0">{t.emoji}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className={`text-xs font-semibold ${style.text} truncate`}>{t.title}</p>
+                            <p className="text-[10px] text-muted-foreground">{t.duration}</p>
+                          </div>
+                          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-info flex-shrink-0" /> : <Sparkles className="w-3 h-3 text-info opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />}
                         </button>
                       );
                     })}
