@@ -215,7 +215,8 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   const uploadFile = useUploadChatFile();
   const { typingUsers, sendTyping, stopTyping } = useTypingIndicator(room.id);
   const { markAsRead } = useReadReceipts();
-  const webrtc = useWebRTC(room.id);
+  const call = useCallSignal(room.id);
+  const [callElapsed, setCallElapsed] = useState(0);
   const editMessage = useEditMessage();
   const deleteMessage = useDeleteMessage();
   const { isOnline } = usePresence(room.id);
@@ -299,19 +300,58 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   };
 
   const handleStartCall = async (video: boolean) => {
-    const memberIds = members.map((m) => m.user_id);
-    webrtc.startCall(memberIds, video, memberMap);
+    const myName = memberMap.get(userId) || "Someone";
+    await call.startCall(video, myName, async (content, callUrl) => {
+      try {
+        await sendMessage.mutateAsync({
+          roomId: room.id,
+          content: `${content}||CALL_URL:${callUrl}`,
+          messageType: "system",
+        });
+      } catch (err) {
+        console.error("Failed to post call message", err);
+      }
+    });
     toast.info(video ? "Starting video call..." : "Starting voice call...");
-    // Log call event as a system message in chat
+  };
+
+  const handleSaveRecording = async (blob: Blob, filename: string) => {
+    if (!userId) return;
     try {
-      const myName = memberMap.get(userId) || "Someone";
+      const path = `${userId}/recordings/${filename}`;
+      const { error } = await supabase.storage.from("chat-files").upload(path, blob, {
+        contentType: "video/webm",
+        upsert: false,
+      });
+      if (error) throw error;
+      const { data } = supabase.storage.from("chat-files").getPublicUrl(path);
       await sendMessage.mutateAsync({
         roomId: room.id,
-        content: video ? `📹 ${myName} started a video call` : `📞 ${myName} started a voice call`,
-        messageType: "system",
+        content: `Shared a recording: ${filename}`,
+        messageType: "file",
+        fileName: filename,
+        fileUrl: data.publicUrl,
+        fileSize: blob.size,
       });
-    } catch {}
+      toast.success("Recording saved to chat");
+    } catch (err) {
+      console.error("Save recording error", err);
+      toast.error("Failed to upload recording");
+    }
   };
+
+  // Tick the call elapsed timer
+  useEffect(() => {
+    if (!call.activeCall) {
+      setCallElapsed(0);
+      return;
+    }
+    setCallElapsed(Math.floor((Date.now() - call.activeCall.startedAt) / 1000));
+    const id = window.setInterval(() => {
+      setCallElapsed(Math.floor((Date.now() - call.activeCall!.startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [call.activeCall]);
 
   return (
     <>
