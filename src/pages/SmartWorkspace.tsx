@@ -6,6 +6,7 @@ import {
   GraduationCap, Lightbulb, Loader2, Send, Download, Eye,
   FolderPlus, Folder, FolderOpen, ArrowLeft, MoreHorizontal,
   Phone, Video, Paperclip, Copy, UserPlus, MessageSquare, ExternalLink,
+  Film, Link as LinkIcon, Play, Plus,
 } from "lucide-react";
 import { useStudyFiles, useWorkspaceRooms, StudyFile } from "@/hooks/useStudyFiles";
 import { useRoomMessages, useSendRoomMessage, useUploadRoomFile } from "@/hooks/useRoomChat";
