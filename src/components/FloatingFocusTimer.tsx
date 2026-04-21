@@ -7,11 +7,10 @@ import { useLocation } from "react-router-dom";
 export default function FloatingFocusTimer() {
   const ctx = useFocusTimerOptional();
   const location = useLocation();
+  const [dismissed, setDismissed] = useState(false);
+
   if (!ctx) return null;
   const { seconds, running, setRunning, reset, duration, sessionType } = ctx;
-  const [dismissed, setDismissed] = useState(false);
-  const [position, setPosition] = useState({ x: 20, y: 20 });
-  const location = useLocation();
 
   // Only show when running and not on the assistant/focus page
   if (!running || location.pathname === "/assistant" || dismissed) return null;
