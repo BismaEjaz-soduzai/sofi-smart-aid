@@ -66,20 +66,22 @@ export function GlobalSearch() {
 
   const q = query.toLowerCase().trim();
 
-  const results: SearchResult[] = !q ? [] : [
-    ...(tasks || [])
-      .filter(t => t.title.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q))
-      .slice(0, 5)
-      .map(t => ({ id: t.id, title: t.title, subtitle: t.category, type: "task" as const, route: "/tasks" })),
-    ...(notes || [])
-      .filter(n => n.title.toLowerCase().includes(q) || n.content?.toLowerCase().includes(q))
-      .slice(0, 5)
-      .map(n => ({ id: n.id, title: n.title, subtitle: n.category, type: "note" as const, route: "/notes" })),
-    ...(plans || [])
-      .filter(p => p.title.toLowerCase().includes(q) || p.goal?.toLowerCase().includes(q))
-      .slice(0, 5)
-      .map(p => ({ id: p.id, title: p.title, subtitle: p.category, type: "plan" as const, route: "/planner" })),
-  ];
+  const taskResults: SearchResult[] = !q ? [] : (tasks || [])
+    .filter(t => t.title.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q))
+    .slice(0, 5)
+    .map(t => ({ id: t.id, title: t.title, subtitle: t.category, type: "task" as const, route: "/organizer" }));
+
+  const noteResults: SearchResult[] = !q ? [] : (notes || [])
+    .filter(n => n.title.toLowerCase().includes(q) || n.content?.toLowerCase().includes(q))
+    .slice(0, 5)
+    .map(n => ({ id: n.id, title: n.title, subtitle: n.category, type: "note" as const, route: "/organizer" }));
+
+  const planResults: SearchResult[] = !q ? [] : (plans || [])
+    .filter(p => p.title.toLowerCase().includes(q) || p.goal?.toLowerCase().includes(q))
+    .slice(0, 5)
+    .map(p => ({ id: p.id, title: p.title, subtitle: p.category, type: "plan" as const, route: "/planner" }));
+
+  const results: SearchResult[] = [...taskResults, ...noteResults, ...planResults];
 
   useEffect(() => { setSelectedIdx(0); }, [query]);
 
@@ -132,32 +134,48 @@ export function GlobalSearch() {
           </div>
 
           {/* Results */}
-          <div className="max-h-72 overflow-y-auto">
+          <div className="max-h-96 overflow-y-auto">
             {q && results.length === 0 && (
               <div className="px-4 py-8 text-center text-sm text-muted-foreground">
                 No results for "{query}"
               </div>
             )}
-            {results.map((r, i) => {
-              const cfg = typeConfig[r.type];
-              return (
-                <button
-                  key={`${r.type}-${r.id}`}
-                  onClick={() => handleSelect(r)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                    i === selectedIdx ? "bg-accent" : "hover:bg-muted/50"
-                  }`}
-                >
-                  <cfg.icon className={`w-4 h-4 flex-shrink-0 ${cfg.color}`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{r.title}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{r.subtitle}</p>
-                  </div>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{cfg.label}</span>
-                  <ArrowRight className="w-3 h-3 text-muted-foreground" />
-                </button>
-              );
-            })}
+            {q && results.length > 0 && (
+              <div className="px-4 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground border-b border-border">
+                {results.length} result{results.length !== 1 ? "s" : ""}
+              </div>
+            )}
+            {[
+              { label: "Tasks", items: taskResults, offset: 0 },
+              { label: "Notes", items: noteResults, offset: taskResults.length },
+              { label: "Plans", items: planResults, offset: taskResults.length + noteResults.length },
+            ].map((group) => group.items.length > 0 && (
+              <div key={group.label}>
+                <div className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                  {group.label}
+                </div>
+                {group.items.map((r, i) => {
+                  const cfg = typeConfig[r.type];
+                  const globalIdx = group.offset + i;
+                  return (
+                    <button
+                      key={`${r.type}-${r.id}`}
+                      onClick={() => handleSelect(r)}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                        globalIdx === selectedIdx ? "bg-accent" : "hover:bg-muted/50"
+                      }`}
+                    >
+                      <cfg.icon className={`w-4 h-4 flex-shrink-0 ${cfg.color}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{r.title}</p>
+                        {r.subtitle && <p className="text-xs text-muted-foreground capitalize truncate">{r.subtitle}</p>}
+                      </div>
+                      <ArrowRight className="w-3 h-3 text-muted-foreground" />
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
             {!q && (
               <div className="px-4 py-6 text-center text-xs text-muted-foreground">
                 Type to search across tasks, notes, and plans
