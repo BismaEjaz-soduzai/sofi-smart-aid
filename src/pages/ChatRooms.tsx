@@ -16,11 +16,10 @@ import {
 } from "@/hooks/useChat";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useReadReceipts } from "@/hooks/useReadReceipts";
-import { useWebRTC } from "@/hooks/useWebRTC";
+import { useCallSignal } from "@/hooks/useCallSignal";
 import { usePresence } from "@/hooks/usePresence";
 import { useReactions } from "@/hooks/useReactions";
-import VideoCallOverlay from "@/components/chat/VideoCallOverlay";
-import IncomingCallOverlay from "@/components/chat/IncomingCallOverlay";
+import CallBar from "@/components/chat/CallBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
