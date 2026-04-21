@@ -397,15 +397,6 @@ async function fetchFileContent(file: StudyFile): Promise<string | null> {
   }
 }
 
-async function readLocalFile(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.readAsText(file);
-  });
-}
-
 async function getSignedUrl(file: StudyFile): Promise<string | null> {
   const { data, error } = await supabase.storage.from("study-files").createSignedUrl(file.file_path, 3600);
   if (error) return null;
@@ -548,35 +539,8 @@ export default function SmartWorkspace() {
   const [generatedItems, setGeneratedItems] = useState<GeneratedItem[]>([]);
   const [currentOutput, setCurrentOutput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [localFiles, setLocalFiles] = useState<File[]>([]);
-  const localFileRef = useRef<HTMLInputElement>(null);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [newRoom, setNewRoom] = useState({ name: "", emoji: "📁", color: "blue" });
-
-  const filtered = files.filter((f) => f.file_name.toLowerCase().includes(search.toLowerCase()));
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault(); setDragOver(false);
-    Array.from(e.dataTransfer.files).forEach((f) => uploadFile.mutate(f));
-  }, [uploadFile]);
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) Array.from(e.target.files).forEach((f) => uploadFile.mutate(f));
-    e.target.value = "";
-  };
-
-  const handleLocalFileAction = async (file: File, prompt: string) => {
-    setAiLoading(true); setIsStreaming(true); setCurrentOutput(""); setTab("generated");
-    try {
-      const content = await readLocalFile(file);
-      await runAiStream(`${prompt}\n\nFile: "${file.name}"\n\nContent:\n${content.slice(0, 15000)}`);
-    } catch { toast.error("Could not read file"); setAiLoading(false); setIsStreaming(false); }
-  };
-
-  const handleAddLocalFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) { setLocalFiles((prev) => [...prev, ...Array.from(e.target.files!)]); toast.success(`${e.target.files.length} file(s) added`); }
-    e.target.value = "";
-  };
 
   const [viewingFile, setViewingFile] = useState<ViewingFile | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
@@ -971,34 +935,6 @@ export default function SmartWorkspace() {
               {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
-          {localFiles.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5"><FileText className="w-3 h-3" /> Local Files (ready for AI)</p>
-              <div className="space-y-2">
-                {localFiles.map((file, idx) => (
-                  <div key={`${file.name}-${idx}`} className="flex items-center justify-between bg-card border border-border rounded-lg p-2.5">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                      <span className="text-sm text-foreground truncate">{file.name}</span>
-                      <span className="text-[10px] text-muted-foreground">{formatSize(file.size)}</span>
-                    </div>
-                    <div className="flex gap-1 flex-shrink-0">
-                      {ACTIONS.slice(0, 3).map((action) => (
-                        <button key={action.label} onClick={() => handleLocalFileAction(file, action.prompt)} className="px-2 py-1 rounded text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors">{action.label}</button>
-                      ))}
-                      <button onClick={() => setLocalFiles((prev) => prev.filter((_, i) => i !== idx))} className="px-1.5 py-1 rounded text-[10px] text-destructive/70 hover:bg-destructive/10"><X className="w-3 h-3" /></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            <input ref={localFileRef} type="file" accept={ACCEPTED + ",.csv,.md"} multiple onChange={handleAddLocalFiles} className="hidden" />
-            <button onClick={() => localFileRef.current?.click()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-muted/60 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors border border-dashed border-border">
-              <Upload className="w-3.5 h-3.5" /> Add local files for AI
-            </button>
-          </div>
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> Academic AI Tools</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -1257,7 +1193,8 @@ export default function SmartWorkspace() {
                     onClick={async () => {
                       if (!newLinkUrl.trim()) return;
                       await addLink.mutateAsync({ url: newLinkUrl, title: newLinkTitle });
-                      setNewLinkUrl(""); setNewLinkTitle("");
+                      setNewLinkUrl("");
+                      setNewLinkTitle("");
                     }}
                     disabled={!newLinkUrl.trim() || addLink.isPending}
                     className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
@@ -1272,41 +1209,78 @@ export default function SmartWorkspace() {
               ) : links.length === 0 ? (
                 <div className="text-center py-12">
                   <p className="text-sm font-medium text-foreground">Nothing pinned yet</p>
-                  <p className="text-xs text-muted-foreground mt-1">Paste a YouTube/web link above to get started</p>
+                  <p className="text-xs text-muted-foreground mt-1">Paste a website or YouTube link above to pin it for the room</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {links.map((link) => {
                     const ytEmbed = getYouTubeEmbedUrl(link.url);
                     const ytThumb = getYouTubeThumbnail(link.url);
+                    const hostname = (() => {
+                      try { return new URL(link.url).hostname.replace(/^www\./, ""); }
+                      catch { return link.url; }
+                    })();
+                    const favicon = `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`;
+                    const canDelete = link.user_id === user?.id;
+
                     return (
-                      <motion.div key={link.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                        className="bg-card border border-border rounded-xl p-3 space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-foreground truncate">{link.title || link.url}</p>
-                            <p className="text-[10px] text-muted-foreground truncate">{link.url}</p>
+                      <motion.a
+                        key={link.id}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block bg-card border border-border rounded-xl overflow-hidden hover:border-primary/30 hover:bg-primary/5 transition-all"
+                      >
+                        {ytThumb ? (
+                          <div className="relative aspect-video bg-muted overflow-hidden">
+                            <img src={ytThumb} alt={link.title || hostname} className="w-full h-full object-cover" loading="lazy" />
+                            <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                              <div className="w-10 h-10 rounded-full bg-background/90 text-foreground flex items-center justify-center shadow-sm">
+                                <Play className="w-4 h-4 ml-0.5" />
+                              </div>
+                            </div>
                           </div>
-                          <button onClick={() => removeLink.mutate(link.id)} className="text-destructive/60 hover:text-destructive transition-colors">
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                        {ytEmbed ? (
-                          <iframe src={ytEmbed} title={link.title || link.url} allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture" allowFullScreen className="w-full aspect-video rounded-lg bg-black border-0" />
-                        ) : ytThumb ? (
-                          <img src={ytThumb} alt={link.title} className="w-full rounded-lg" />
                         ) : (
-                          <a href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1.5 py-3 rounded-lg bg-muted/60 text-xs font-medium text-primary hover:bg-primary/10 transition-colors">
-                            <ExternalLink className="w-3.5 h-3.5" /> Open link
-                          </a>
+                          <div className="px-4 pt-4 flex items-center gap-3">
+                            <img src={favicon} alt="" className="w-8 h-8 rounded-md flex-shrink-0" loading="lazy" />
+                            <div className="min-w-0">
+                              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Pinned link</p>
+                              <p className="text-xs text-muted-foreground truncate">{hostname}</p>
+                            </div>
+                          </div>
                         )}
-                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                          <span>{format(new Date(link.created_at), "MMM d, yyyy")}</span>
-                          <a href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
-                            <ExternalLink className="w-3 h-3" /> Open
-                          </a>
+
+                        <div className="p-4 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-foreground truncate">{link.title || hostname}</p>
+                              <p className="text-[11px] text-muted-foreground truncate">{link.url}</p>
+                              {link.note && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{link.note}</p>}
+                            </div>
+                            {canDelete && (
+                              <button
+                                onClick={async (e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  await removeLink.mutateAsync(link.id);
+                                }}
+                                className="text-destructive/60 hover:text-destructive transition-colors flex-shrink-0"
+                                title="Remove pin"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                            <span>{format(new Date(link.created_at), "MMM d, yyyy · h:mm a")}</span>
+                            <span className="inline-flex items-center gap-1 text-primary">
+                              <ExternalLink className="w-3 h-3" /> Open
+                            </span>
+                          </div>
                         </div>
-                      </motion.div>
+                      </motion.a>
                     );
                   })}
                 </div>
