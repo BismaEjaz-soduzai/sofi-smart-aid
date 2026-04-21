@@ -2,14 +2,17 @@ import { motion } from "framer-motion";
 import {
   CheckSquare, StickyNote, Calendar, Sparkles, TrendingUp,
   Timer, MessageCircle, BookOpen, AlertTriangle, Zap, Target,
-  ArrowRight, Flame, Pause, Play, RotateCcw,
+  ArrowRight, Flame, Pause, Play, RotateCcw, Trophy, Star,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useTasks } from "@/hooks/useTasks";
 import { useNotes } from "@/hooks/useNotes";
 import { usePlans } from "@/hooks/usePlans";
 import { useFocusTimer } from "@/contexts/FocusTimerContext";
+import { useRewards } from "@/hooks/useRewards";
+import { useDailyActivity } from "@/hooks/useStudySessions";
 import { format, isPast, isToday, isTomorrow, parseISO } from "date-fns";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 
 const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const item = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } };
