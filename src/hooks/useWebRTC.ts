@@ -194,11 +194,15 @@ export function useWebRTC(roomId?: string) {
       if (state === "connected") setCallState("connected");
       if (state === "failed") {
         console.log("Connection failed, attempting ICE restart for", peerId);
+        toast("Reconnecting call...", { duration: 2000 });
         pc.restartIce();
         pc.createOffer({ iceRestart: true }).then((offer) => {
           pc.setLocalDescription(offer);
           void sendSignal(peerId, "offer", offer);
-        }).catch(() => removePeer(peerId));
+        }).catch(() => {
+          toast.error("Call connection lost");
+          removePeer(peerId);
+        });
       }
       if (state === "disconnected") {
         setTimeout(() => {
