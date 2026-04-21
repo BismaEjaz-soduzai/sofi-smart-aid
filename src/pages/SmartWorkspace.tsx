@@ -1,12 +1,18 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload, FileText, File, Presentation, FileType, Search,
   Trash2, Sparkles, BookOpen, ClipboardList, HelpCircle, LayoutList, X,
   GraduationCap, Lightbulb, Loader2, Send, Download, Eye,
   FolderPlus, Folder, FolderOpen, ArrowLeft, MoreHorizontal,
+  Phone, Video, Paperclip, Copy, UserPlus, MessageSquare,
 } from "lucide-react";
 import { useStudyFiles, useWorkspaceRooms, StudyFile } from "@/hooks/useStudyFiles";
+import { useRoomMessages, useSendRoomMessage, useUploadRoomFile } from "@/hooks/useRoomChat";
+import { useCallSignal } from "@/hooks/useCallSignal";
+import CallBar from "@/components/chat/CallBar";
+import { useAuth } from "@/contexts/AuthContext";
+import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -340,7 +346,7 @@ Topic: ` },
 const ACCEPTED = ".pdf,.docx,.doc,.ppt,.pptx,.txt";
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/study-chat`;
 
-type Tab = "uploads" | "ai-tools" | "generated";
+type Tab = "uploads" | "ai-tools" | "generated" | "chat";
 
 interface GeneratedItem {
   id: string;
@@ -399,9 +405,121 @@ async function getSignedUrl(file: StudyFile): Promise<string | null> {
 }
 
 export default function SmartWorkspace() {
-  const { rooms, createRoom, deleteRoom } = useWorkspaceRooms();
+  const { user } = useAuth();
+  const { profile } = useProfile();
+  const myName = profile?.display_name || user?.email?.split("@")[0] || "User";
+  const { rooms, createRoom, deleteRoom, joinRoomByCode } = useWorkspaceRooms();
   const [activeRoomId, setActiveRoomId] = useState<string | undefined>(undefined);
   const activeRoom = rooms.find((r) => r.id === activeRoomId);
+
+  // ===== Room chat / call state =====
+  const roomCall = useCallSignal(activeRoomId || "no-room");
+  const { messages: roomMessages } = useRoomMessages(activeRoomId);
+  const sendRoomMessage = useSendRoomMessage();
+  const uploadRoomFile = useUploadRoomFile();
+  const [chatInput, setChatInput] = useState("");
+  const [callElapsed, setCallElapsed] = useState(0);
+  const [showJoinInput, setShowJoinInput] = useState(false);
+  const [joinCode, setJoinCode] = useState("");
+  const chatFileRef = useRef<HTMLInputElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!roomCall.activeCall) { setCallElapsed(0); return; }
+    const start = roomCall.activeCall.startedAt;
+    const tick = () => setCallElapsed(Math.floor((Date.now() - start) / 1000));
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [roomCall.activeCall]);
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [roomMessages.length]);
+
+  const handleStartRoomCall = (isVideo: boolean) => {
+    if (!activeRoomId) return;
+    roomCall.startCall(isVideo, myName, async (displayText, callUrl) => {
+      await sendRoomMessage.mutateAsync({
+        roomId: activeRoomId,
+        content: `${displayText}||CALL_URL:${callUrl}`,
+        senderName: myName,
+        messageType: "system",
+      });
+    });
+  };
+
+  const handleSaveRoomRecording = async (blob: Blob, filename: string) => {
+    if (!activeRoomId || !user) return;
+    const path = `${user.id}/recordings/${filename}`;
+    const { error } = await supabase.storage.from("study-files").upload(path, blob, { contentType: "video/webm" });
+    if (error) { toast.error("Recording upload failed"); return; }
+    const { data } = await supabase.storage.from("study-files").createSignedUrl(path, 60 * 60 * 24 * 365);
+    await sendRoomMessage.mutateAsync({
+      roomId: activeRoomId,
+      content: "Shared a recording",
+      senderName: myName,
+      messageType: "file",
+      fileName: filename,
+      fileUrl: data?.signedUrl || "",
+      fileSize: blob.size,
+    });
+    toast.success("Recording saved to chat");
+  };
+
+  const handleSendChat = async () => {
+    if (!chatInput.trim() || !activeRoomId) return;
+    const content = chatInput.trim();
+    setChatInput("");
+    await sendRoomMessage.mutateAsync({ roomId: activeRoomId, content, senderName: myName });
+  };
+
+  const handleChatFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !activeRoomId) return;
+    const result = await uploadRoomFile.mutateAsync(file);
+    await sendRoomMessage.mutateAsync({
+      roomId: activeRoomId,
+      content: `Shared ${file.name}`,
+      senderName: myName,
+      messageType: "file",
+      fileName: result.name,
+      fileUrl: result.url,
+      fileSize: result.size,
+    });
+  };
+
+  const handleQuickShare = async (file: StudyFile) => {
+    if (!activeRoomId) return;
+    const { data } = await supabase.storage.from("study-files").createSignedUrl(file.file_path, 60 * 60 * 24 * 365);
+    await sendRoomMessage.mutateAsync({
+      roomId: activeRoomId,
+      content: `Shared ${file.file_name}`,
+      senderName: myName,
+      messageType: "file",
+      fileName: file.file_name,
+      fileUrl: data?.signedUrl || "",
+      fileSize: file.file_size,
+    });
+  };
+
+  const handleCopyInvite = () => {
+    if (!activeRoom) return;
+    navigator.clipboard.writeText(activeRoom.invite_code).then(() => toast.success(`Code ${activeRoom.invite_code} copied`));
+  };
+
+  const handleJoinByCode = async () => {
+    try {
+      const room = await joinRoomByCode.mutateAsync(joinCode);
+      setActiveRoomId(room.id);
+      setShowJoinInput(false);
+      setJoinCode("");
+      toast.success(`Joined ${room.name}`);
+    } catch { /* error toast handled in hook */ }
+  };
 
   // Pass room filter: null = general (unassigned) files, specific ID = room files
   const { files, isLoading, uploadFile, deleteFile, moveFile } = useStudyFiles(activeRoomId === undefined ? null : activeRoomId);
