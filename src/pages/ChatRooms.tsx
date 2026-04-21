@@ -320,7 +320,8 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   const handleSaveRecording = async (blob: Blob, filename: string) => {
     if (!userId) return;
     try {
-      const path = `${userId}/recordings/${filename}`;
+      // Store in the room folder so every member can access shared recordings
+      const path = `rooms/${room.id}/recordings/${filename}`;
       const { error } = await supabase.storage.from("chat-files").upload(path, blob, {
         contentType: "video/webm",
         upsert: false,
@@ -335,7 +336,7 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
         fileUrl: data.publicUrl,
         fileSize: blob.size,
       });
-      toast.success("Recording saved to chat");
+      toast.success("Recording saved to team folder");
     } catch (err) {
       console.error("Save recording error", err);
       toast.error("Failed to upload recording");
