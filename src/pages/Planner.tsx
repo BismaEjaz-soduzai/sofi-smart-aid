@@ -140,15 +140,78 @@ export default function Planner() {
     setView("create");
   };
 
+  const buildContextualPrompt = (extra: string) => {
+    // Compute real day count from dates if both are set
+    let dayInfo = "";
+    let correctionNote = "";
+    if (form.start_date && form.end_date) {
+      const s = parseISO(form.start_date);
+      const e = parseISO(form.end_date);
+      const days = differenceInDays(e, s) + 1;
+      if (days > 0) {
+        dayInfo = `\nEXACT TIMEFRAME: ${days} day(s), from ${form.start_date} to ${form.end_date}.`;
+        // Detect mismatch between user's duration text and actual days
+        if (form.duration && form.duration.trim()) {
+          const dur = form.duration.toLowerCase();
+          const declaredDays =
+            /week/.test(dur) ? (parseInt(dur) || 1) * 7 :
+            /month/.test(dur) ? (parseInt(dur) || 1) * 30 :
+            /day/.test(dur) ? (parseInt(dur) || 0) : 0;
+          if (declaredDays && Math.abs(declaredDays - days) > 1) {
+            correctionNote = `\nIMPORTANT CORRECTION: The user wrote duration "${form.duration}" (~${declaredDays} days), but the start/end dates only cover ${days} days. Begin your response with one short sentence correcting this (e.g. "This is not a ${form.duration}; based on your dates it is a ${days}-day plan. I'll generate a ${days}-day plan accordingly."), then produce the plan strictly within ${days} days.`;
+          }
+        }
+      }
+    } else if (form.duration) {
+      dayInfo = `\nDURATION: ${form.duration} (no exact dates provided — pick a sensible day-by-day breakdown).`;
+    }
+
+    const fields = [
+      form.title && `Title: ${form.title}`,
+      form.goal && `Goal: ${form.goal}`,
+      form.category && `Category: ${form.category}`,
+      form.color_tag && `Color tag: ${form.color_tag}`,
+      form.start_date && `Start date: ${form.start_date}`,
+      form.end_date && `End date: ${form.end_date}`,
+      form.duration && `User-stated duration: ${form.duration}`,
+      form.description && `Existing notes/description: ${form.description}`,
+    ].filter(Boolean).join("\n");
+
+    return `You are an expert study & productivity planner. Generate a clean, structured plan using ALL the user's form data below.${dayInfo}${correctionNote}
+
+USER'S PLAN DETAILS:
+${fields || "(no fields filled yet)"}
+
+${extra ? `ADDITIONAL USER REQUEST:\n${extra}\n` : ""}
+RULES YOU MUST FOLLOW:
+1. STRICTLY respect the start_date and end_date. Never schedule anything outside that range.
+2. If a correction note is given above, output that one-line correction first, then the plan.
+3. Output the plan as clean Markdown with this structure:
+   - A short 1-line summary
+   - A "## Day-by-day Plan" section with one "### Day N — <YYYY-MM-DD> — <focus>" block per day, each containing 2-5 bullet tasks (optionally prefixed with a time slot like "09:00–10:30 —").
+   - Then a "## Grouped by Category" section with bullet points grouping tasks by theme/category.
+4. Be realistic, specific to the goal "${form.goal || form.title || "the user's objective"}", and match the category "${form.category}".
+5. Do NOT invent dates outside the given range. Do NOT pad with filler days.`;
+  };
+
   const handleAiGenerate = async () => {
-    if (!aiPrompt.trim() || aiLoading) return;
+    // Allow generation if form has meaningful data OR user typed an extra prompt
+    const hasFormData = form.title.trim() || form.goal?.trim() || (form.start_date && form.end_date);
+    if (!hasFormData && !aiPrompt.trim()) {
+      toast.error("Add a title, goal or dates first so the AI can plan accurately.");
+      return;
+    }
+    if (aiLoading) return;
     setAiLoading(true); setAiOutput("");
     let content = "";
     try {
+      const fullPrompt = view === "create"
+        ? buildContextualPrompt(aiPrompt.trim())
+        : `You are a study planner. Create a detailed structured plan with sessions/milestones. Format with clear titles, dates, and checkpoints:\n\n${aiPrompt}`;
       const resp = await fetch(CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
-        body: JSON.stringify({ messages: [{ role: "user", content: `You are a study planner. Create a detailed structured plan with sessions/milestones. Format with clear titles, dates, and checkpoints:\n\n${aiPrompt}` }] }),
+        body: JSON.stringify({ messages: [{ role: "user", content: fullPrompt }] }),
       });
       if (!resp.ok) { await throwIfBadResponse(resp, "AI Plan"); }
       if (!resp.body) throw new Error("No body");
@@ -334,23 +397,24 @@ export default function Planner() {
                 {/* AI Generate inline */}
                 <div className="border-t border-border pt-4 mt-2">
                   <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5"><Sparkles className="w-3 h-3 text-info" /> Generate with AI</p>
+                  <p className="text-[10px] text-muted-foreground mb-2">AI will read your title, goal, dates, duration & description above and build a strict day-by-day plan.</p>
                   <div className="flex gap-2">
-                    <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="e.g. Create a 2-week revision plan for Database Systems" className="flex-1 bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring" onKeyDown={(e) => { if (e.key === "Enter") handleAiGenerate(); }} />
-                    <button onClick={handleAiGenerate} disabled={!aiPrompt.trim() || aiLoading} className="px-3 py-2 rounded-lg bg-info/10 text-info text-xs font-medium hover:bg-info/20 disabled:opacity-40 transition-colors flex items-center gap-1.5">
-                      {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Generate
+                    <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Optional extra instructions (e.g. focus on weak topics)" className="flex-1 bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAiGenerate(); } }} />
+                    <button onClick={handleAiGenerate} disabled={aiLoading} className="px-3 py-2 rounded-lg bg-info/10 text-info text-xs font-medium hover:bg-info/20 disabled:opacity-40 transition-colors flex items-center gap-1.5 whitespace-nowrap">
+                      {aiLoading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating…</> : <><Sparkles className="w-3.5 h-3.5" /> Generate</>}
                     </button>
                   </div>
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {SUGGESTED_AI_PROMPTS.slice(0, 3).map((p) => (
-                      <button key={p} onClick={() => { setAiPrompt(p); }} className="px-2 py-1 rounded-lg text-[10px] font-medium bg-muted/60 text-muted-foreground hover:bg-info/10 hover:text-info transition-colors truncate max-w-[200px]">{p}</button>
-                    ))}
-                  </div>
+                  {aiLoading && !aiOutput && (
+                    <div className="mt-3 bg-muted/30 border border-border rounded-xl p-4 flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-info" /> Reading your plan details and generating…
+                    </div>
+                  )}
                   {aiOutput && (
                     <div className="mt-3 bg-muted/30 border border-border rounded-xl p-4 max-h-60 overflow-auto">
                       <div className="prose prose-sm dark:prose-invert max-w-none"><ReactMarkdown>{aiOutput}</ReactMarkdown></div>
                       <div className="flex gap-2 mt-3">
-                        <button onClick={() => { setForm({ ...form, description: aiOutput, source_type: "ai" }); setAiOutput(""); toast.success("AI content added"); }} className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity">Use as Description</button>
-                        <button onClick={saveAiPlan} disabled={createPlan.isPending} className="px-3 py-1.5 rounded-lg bg-info/10 text-info text-xs font-medium hover:bg-info/20 transition-colors">Save as Separate Plan</button>
+                        <button onClick={() => { setForm({ ...form, description: aiOutput, source_type: "ai" }); setAiOutput(""); setAiPrompt(""); toast.success("AI plan added to description"); }} className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity">Use as Description</button>
+                        <button onClick={() => { setAiOutput(""); }} className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs font-medium hover:text-foreground transition-colors">Discard</button>
                       </div>
                     </div>
                   )}
