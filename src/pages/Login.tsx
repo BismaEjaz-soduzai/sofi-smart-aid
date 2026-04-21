@@ -34,6 +34,8 @@ export default function Login() {
     if (error) {
       if (/email not confirmed/i.test(error)) {
         toast.error("Please verify your email first — check your inbox.");
+      } else if (/invalid login credentials/i.test(error)) {
+        toast.error("Wrong email or password. Use Forgot password to reset it.");
       } else {
         toast.error(error);
       }
