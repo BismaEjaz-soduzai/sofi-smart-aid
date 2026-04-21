@@ -23,7 +23,7 @@ import SofiAssistant from "@/pages/SofiAssistant";
 import SettingsPage from "@/pages/SettingsPage";
 import ProfilePage from "@/pages/ProfilePage";
 import ChatRooms from "@/pages/ChatRooms";
-import Analytics from "@/pages/Analytics";
+import StudyAnalytics from "@/pages/StudyAnalytics";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -54,7 +54,7 @@ const App = () => (
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/chat" element={<ChatRooms />} />
-                <Route path="/analytics" element={<Analytics />} />
+                <Route path="/analytics" element={<StudyAnalytics />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
