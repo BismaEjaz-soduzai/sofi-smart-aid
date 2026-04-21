@@ -16,11 +16,10 @@ import {
 } from "@/hooks/useChat";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useReadReceipts } from "@/hooks/useReadReceipts";
-import { useWebRTC } from "@/hooks/useWebRTC";
+import { useCallSignal } from "@/hooks/useCallSignal";
 import { usePresence } from "@/hooks/usePresence";
 import { useReactions } from "@/hooks/useReactions";
-import VideoCallOverlay from "@/components/chat/VideoCallOverlay";
-import IncomingCallOverlay from "@/components/chat/IncomingCallOverlay";
+import CallBar from "@/components/chat/CallBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -216,7 +215,8 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   const uploadFile = useUploadChatFile();
   const { typingUsers, sendTyping, stopTyping } = useTypingIndicator(room.id);
   const { markAsRead } = useReadReceipts();
-  const webrtc = useWebRTC(room.id);
+  const call = useCallSignal(room.id);
+  const [callElapsed, setCallElapsed] = useState(0);
   const editMessage = useEditMessage();
   const deleteMessage = useDeleteMessage();
   const { isOnline } = usePresence(room.id);
@@ -300,49 +300,81 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   };
 
   const handleStartCall = async (video: boolean) => {
-    const memberIds = members.map((m) => m.user_id);
-    webrtc.startCall(memberIds, video, memberMap);
+    const myName = memberMap.get(userId) || "Someone";
+    await call.startCall(video, myName, async (content, callUrl) => {
+      try {
+        await sendMessage.mutateAsync({
+          roomId: room.id,
+          content: `${content}||CALL_URL:${callUrl}`,
+          messageType: "system",
+        });
+      } catch (err) {
+        console.error("Failed to post call message", err);
+      }
+    });
     toast.info(video ? "Starting video call..." : "Starting voice call...");
-    // Log call event as a system message in chat
+  };
+
+  const handleSaveRecording = async (blob: Blob, filename: string) => {
+    if (!userId) return;
     try {
-      const myName = memberMap.get(userId) || "Someone";
+      const path = `${userId}/recordings/${filename}`;
+      const { error } = await supabase.storage.from("chat-files").upload(path, blob, {
+        contentType: "video/webm",
+        upsert: false,
+      });
+      if (error) throw error;
+      const { data } = supabase.storage.from("chat-files").getPublicUrl(path);
       await sendMessage.mutateAsync({
         roomId: room.id,
-        content: video ? `📹 ${myName} started a video call` : `📞 ${myName} started a voice call`,
-        messageType: "system",
+        content: `Shared a recording: ${filename}`,
+        messageType: "file",
+        fileName: filename,
+        fileUrl: data.publicUrl,
+        fileSize: blob.size,
       });
-    } catch {}
+      toast.success("Recording saved to chat");
+    } catch (err) {
+      console.error("Save recording error", err);
+      toast.error("Failed to upload recording");
+    }
   };
+
+  // Tick the call elapsed timer
+  useEffect(() => {
+    if (!call.activeCall) {
+      setCallElapsed(0);
+      return;
+    }
+    setCallElapsed(Math.floor((Date.now() - call.activeCall.startedAt) / 1000));
+    const id = window.setInterval(() => {
+      setCallElapsed(Math.floor((Date.now() - call.activeCall!.startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [call.activeCall]);
 
   return (
     <>
-      {webrtc.incomingCall && webrtc.callState === "ringing" && (
-        <IncomingCallOverlay
-          call={webrtc.incomingCall}
-          onAccept={webrtc.acceptCall}
-          onReject={webrtc.rejectCall}
-        />
-      )}
-
-      {webrtc.callState !== "idle" && webrtc.callState !== "ringing" && (
-        <VideoCallOverlay
-          localStream={webrtc.localStream}
-          screenStream={webrtc.screenStream}
-          remoteStreams={webrtc.remoteStreams}
-          isAudioEnabled={webrtc.isAudioEnabled}
-          isVideoEnabled={webrtc.isVideoEnabled}
-          isScreenSharing={webrtc.isScreenSharing}
-          memberNames={memberMap}
-          callDuration={webrtc.callDuration}
-          onToggleAudio={webrtc.toggleAudio}
-          onToggleVideo={webrtc.toggleVideo}
-          onStartScreenShare={webrtc.startScreenShare}
-          onStopScreenShare={webrtc.stopScreenShare}
-          onEndCall={webrtc.endCall}
-        />
-      )}
-
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Active call bar */}
+        <AnimatePresence>
+          {call.activeCall && (
+            <CallBar
+              callUrl={call.activeCall.callUrl}
+              isVideo={call.activeCall.isVideo}
+              startedBy={call.activeCall.startedBy}
+              elapsed={callElapsed}
+              isRecording={call.isRecording}
+              recordingTime={call.recordingTime}
+              formatRecTime={call.formatRecTime}
+              onReopen={() => call.joinCall(call.activeCall!.callUrl)}
+              onEnd={call.endCall}
+              onStartRecording={() => call.startRecording(handleSaveRecording)}
+              onStopRecording={call.stopRecording}
+            />
+          )}
+        </AnimatePresence>
+
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/60 backdrop-blur-sm flex-shrink-0">
           <div className="flex items-center gap-3">
@@ -413,6 +445,23 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
             )}
 
             {messages.map((msg) => {
+              // Render system messages with embedded call URL specially
+              if (msg.message_type === "system" && msg.content.includes("||CALL_URL:")) {
+                const [displayText, callUrl] = msg.content.split("||CALL_URL:");
+                return (
+                  <div key={msg.id} className="flex justify-center">
+                    <div className="flex items-center gap-2 bg-muted/60 border border-border rounded-full px-3 py-1.5">
+                      <span className="text-[11px] text-muted-foreground">{displayText}</span>
+                      <button
+                        onClick={() => call.joinCall(callUrl)}
+                        className="text-[11px] font-semibold bg-success text-success-foreground hover:opacity-90 rounded-full px-2.5 py-0.5 transition-opacity"
+                      >
+                        📞 Join Call
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
               const repliedMsg = msg.reply_to_id ? messageMap.get(msg.reply_to_id) : null;
               const repliedSender = repliedMsg ? (memberMap.get(repliedMsg.user_id) || "User") : null;
               return (
