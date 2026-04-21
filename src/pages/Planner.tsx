@@ -5,8 +5,8 @@ import {
   Plus, Sparkles, BookOpen, GraduationCap, Rocket, Briefcase,
   Presentation, Library, X, Calendar as CalendarIcon, Target, TrendingUp,
   CheckCircle2, Clock, MoreHorizontal, Trash2, ChevronRight,
-  Loader2, Send, LayoutList, CalendarDays, Edit3, Save, ArrowLeft,
-  AlertCircle, Bell, RefreshCw, Wand2, Brain,
+  Loader2, Send, LayoutList, LayoutGrid, CalendarDays, Edit3, Save, ArrowLeft,
+  AlertCircle, Bell, RefreshCw, Wand2, Brain, Check, Flame, Layers,
 } from "lucide-react";
 import { usePlans, useCreatePlan, useDeletePlan, useUpdatePlan, usePlanSessions, useCreateSession, useToggleSession, type Plan, type PlanInsert } from "@/hooks/usePlans";
 import { useTasks } from "@/hooks/useTasks";
@@ -57,10 +57,18 @@ const SUGGESTED_AI_PROMPTS = [
 ];
 
 type View = "overview" | "create" | "ai-generate" | "plan-detail";
-type Tab = "plans" | "calendar";
+type Tab = "board" | "list" | "calendar";
 
 const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } } };
 const item = { hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } };
+
+interface SessionLite {
+  id: string;
+  plan_id: string;
+  title: string;
+  date: string | null;
+  is_completed: boolean;
+}
 
 export default function Planner() {
   const { data: plans = [], isLoading } = usePlans();
@@ -72,8 +80,9 @@ export default function Planner() {
   const navigate = useNavigate();
   const notifiedRef = useRef<Set<string>>(new Set());
   const [view, setView] = useState<View>("overview");
-  const [tab, setTab] = useState<Tab>("plans");
+  const [tab, setTab] = useState<Tab>("board");
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [allSessions, setAllSessions] = useState<SessionLite[]>([]);
   const [form, setForm] = useState<PlanInsert>({
     title: "", goal: "", category: "study", emoji: "📘", color_tag: "blue",
     start_date: null, end_date: null, duration: "", description: "", source_type: "manual",
@@ -83,8 +92,74 @@ export default function Planner() {
   const [aiOutput, setAiOutput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
 
-  const activePlans = plans.filter((p) => p.status === "active");
+  // Fetch ALL sessions across user's plans (for board grouping, today's focus, stats)
+  useEffect(() => {
+    if (plans.length === 0) { setAllSessions([]); return; }
+    const planIds = plans.map((p) => p.id);
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("plan_sessions")
+        .select("id, plan_id, title, date, is_completed")
+        .in("plan_id", planIds);
+      if (!cancelled) setAllSessions((data || []) as SessionLite[]);
+    })();
+    return () => { cancelled = true; };
+  }, [plans]);
+
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const sessionsByPlan = useMemo(() => {
+    const m = new Map<string, SessionLite[]>();
+    allSessions.forEach((s) => {
+      if (!m.has(s.plan_id)) m.set(s.plan_id, []);
+      m.get(s.plan_id)!.push(s);
+    });
+    return m;
+  }, [allSessions]);
+
+  const isPlanOverdue = (planId: string) => {
+    const sess = sessionsByPlan.get(planId) || [];
+    return sess.some((s) => !s.is_completed && s.date && s.date < todayStr);
+  };
+  const planHasTodaySession = (planId: string) => {
+    const sess = sessionsByPlan.get(planId) || [];
+    return sess.some((s) => !s.is_completed && s.date === todayStr);
+  };
+
+  const todayFocus = useMemo(() => {
+    return allSessions
+      .filter((s) => !s.is_completed && s.date === todayStr)
+      .map((s) => ({ ...s, plan: plans.find((p) => p.id === s.plan_id) }))
+      .filter((s) => s.plan);
+  }, [allSessions, plans, todayStr]);
+
+  const completedThisWeek = useMemo(() => {
+    const cutoff = format(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), "yyyy-MM-dd");
+    return allSessions.filter((s) => s.is_completed && s.date && s.date >= cutoff).length;
+  }, [allSessions]);
+
+  const activePlans = plans.filter((p) => p.status === "active" && !isPlanOverdue(p.id));
+  const overduePlans = plans.filter((p) => p.status === "active" && isPlanOverdue(p.id));
   const completedPlans = plans.filter((p) => p.status === "completed");
+  const avgProgress = plans.length ? Math.round(plans.reduce((a, p) => a + (p.progress || 0), 0) / plans.length) : 0;
+
+  const toggleTodaySession = async (sessionId: string, planId: string) => {
+    setAllSessions((cur) => cur.map((s) => s.id === sessionId ? { ...s, is_completed: true } : s));
+    const { error } = await supabase.from("plan_sessions").update({ is_completed: true } as any).eq("id", sessionId);
+    if (error) {
+      toast.error("Failed to update");
+      setAllSessions((cur) => cur.map((s) => s.id === sessionId ? { ...s, is_completed: false } : s));
+      return;
+    }
+    const planSess = (sessionsByPlan.get(planId) || []).map((s) => s.id === sessionId ? { ...s, is_completed: true } : s);
+    if (planSess.length) {
+      const done = planSess.filter((s) => s.is_completed).length;
+      const progress = Math.round((done / planSess.length) * 100);
+      const status = progress === 100 ? "completed" : "active";
+      await supabase.from("plans").update({ progress, status } as any).eq("id", planId);
+    }
+    toast.success("Nice — one down 🎯");
+  };
 
   // Milestone notifications — checks every hour and on plan changes
   useEffect(() => {
@@ -271,7 +346,8 @@ RULES YOU MUST FOLLOW:
       <div className="flex items-center justify-between p-2 border-b border-border bg-card/60 backdrop-blur-sm">
         <div className="flex gap-1">
           {([
-            { key: "plans" as Tab, label: "Plans", icon: LayoutList },
+            { key: "board" as Tab, label: "Board", icon: LayoutGrid },
+            { key: "list" as Tab, label: "List", icon: LayoutList },
             { key: "calendar" as Tab, label: "Calendar", icon: CalendarDays },
           ]).map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)}
@@ -280,7 +356,7 @@ RULES YOU MUST FOLLOW:
             </button>
           ))}
         </div>
-        {tab === "plans" && (
+        {tab !== "calendar" && (
           <div className="flex gap-2">
             <button onClick={() => setView("ai-generate")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-info/10 text-info text-xs font-medium hover:bg-info/20 transition-colors"><Sparkles className="w-3.5 h-3.5" /> AI Generate</button>
             <button onClick={() => { resetForm(); setView("create"); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity"><Plus className="w-3.5 h-3.5" /> Create</button>
@@ -292,9 +368,59 @@ RULES YOU MUST FOLLOW:
         {tab === "calendar" ? (
           <CalendarView plans={plans} tasks={tasks} />
         ) : (
-          <div className="p-4 lg:p-6 max-w-5xl mx-auto space-y-6">
+          <div className="p-4 lg:p-6 max-w-6xl mx-auto space-y-5">
             {view === "overview" && (
               <>
+                {/* Today's Focus */}
+                <motion.div variants={item} className="glass-card p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                      <Flame className="w-4 h-4 text-warning" /> Today's Focus
+                      <span className="text-[10px] font-normal text-muted-foreground ml-1">{format(new Date(), "EEE, MMM d")}</span>
+                    </p>
+                    {todayFocus.length > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-warning/10 text-warning font-semibold">{todayFocus.length} due</span>}
+                  </div>
+                  {todayFocus.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-2">Nothing due today — great day to get ahead 🚀</p>
+                  ) : (
+                    <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                      {todayFocus.map((s) => (
+                        <motion.div key={s.id} layout
+                          className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/50 hover:bg-muted border border-border flex-shrink-0 group cursor-pointer"
+                          onClick={() => { setSelectedPlan(s.plan!); setView("plan-detail"); }}>
+                          <span className="text-base">{s.plan?.emoji}</span>
+                          <div className="min-w-0 max-w-[180px]">
+                            <p className="text-xs font-semibold text-foreground truncate">{s.title}</p>
+                            <p className="text-[10px] text-muted-foreground truncate">{s.plan?.title}</p>
+                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleTodaySession(s.id, s.plan_id); }}
+                            className="ml-1 w-6 h-6 rounded-full bg-success/10 text-success hover:bg-success hover:text-success-foreground flex items-center justify-center transition-colors flex-shrink-0"
+                            title="Mark complete">
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+
+                {/* Stats pills */}
+                <motion.div variants={item} className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                  {[
+                    { label: "Active Plans", value: activePlans.length, icon: Target, color: "text-primary", bg: "bg-primary/10" },
+                    { label: "Total Milestones", value: allSessions.length, icon: Layers, color: "text-info", bg: "bg-info/10" },
+                    { label: "Completed this week", value: completedThisWeek, icon: CheckCircle2, color: "text-success", bg: "bg-success/10" },
+                    { label: "Avg progress", value: `${avgProgress}%`, icon: TrendingUp, color: "text-warning", bg: "bg-warning/10" },
+                  ].map((s) => (
+                    <div key={s.label} className={`flex items-center gap-2 px-3 py-2 rounded-full border border-border ${s.bg} flex-shrink-0`}>
+                      <s.icon className={`w-3.5 h-3.5 ${s.color}`} />
+                      <span className={`text-sm font-bold ${s.color}`}>{s.value}</span>
+                      <span className="text-[11px] text-muted-foreground whitespace-nowrap">{s.label}</span>
+                    </div>
+                  ))}
+                </motion.div>
+
                 {/* Templates */}
                 <motion.div variants={item}>
                   <p className="text-xs font-medium text-muted-foreground mb-3">Quick Templates</p>
@@ -311,21 +437,7 @@ RULES YOU MUST FOLLOW:
                   </div>
                 </motion.div>
 
-                {/* Stats */}
-                <motion.div variants={item} className="grid grid-cols-3 gap-3">
-                  {[
-                    { label: "Active Plans", value: activePlans.length, icon: Target, color: "text-primary" },
-                    { label: "Completed", value: completedPlans.length, icon: CheckCircle2, color: "text-success" },
-                    { label: "Total Sessions", value: plans.reduce((a, p) => a + p.progress, 0), icon: TrendingUp, color: "text-info" },
-                  ].map((s) => (
-                    <div key={s.label} className="glass-card p-4 flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center"><s.icon className={`w-4 h-4 ${s.color}`} /></div>
-                      <div><p className="text-lg font-bold text-foreground">{s.value}</p><p className="text-[11px] text-muted-foreground">{s.label}</p></div>
-                    </div>
-                  ))}
-                </motion.div>
-
-                {/* Activity chart + overall progress */}
+                {/* Activity chart + radial */}
                 <motion.div variants={item} className="grid lg:grid-cols-3 gap-3">
                   <div className="glass-card p-4 lg:col-span-2">
                     <div className="flex items-center justify-between mb-2">
@@ -355,38 +467,56 @@ RULES YOU MUST FOLLOW:
                     <div className="relative flex-1 flex items-center justify-center">
                       <div className="h-[140px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                          <RadialBarChart innerRadius="70%" outerRadius="100%" data={[{ name: "avg", value: plans.length ? Math.round(plans.reduce((a, p) => a + (p.progress || 0), 0) / plans.length) : 0, fill: "hsl(var(--primary))" }]} startAngle={90} endAngle={-270}>
+                          <RadialBarChart innerRadius="70%" outerRadius="100%" data={[{ name: "avg", value: avgProgress, fill: "hsl(var(--primary))" }]} startAngle={90} endAngle={-270}>
                             <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
                             <RadialBar background={{ fill: "hsl(var(--muted))" }} dataKey="value" cornerRadius={20} />
                           </RadialBarChart>
                         </ResponsiveContainer>
                       </div>
                       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                        <p className="text-2xl font-bold text-foreground">{plans.length ? Math.round(plans.reduce((a, p) => a + (p.progress || 0), 0) / plans.length) : 0}%</p>
+                        <p className="text-2xl font-bold text-foreground">{avgProgress}%</p>
                         <p className="text-[10px] text-muted-foreground">{plans.length} plan{plans.length !== 1 ? "s" : ""}</p>
                       </div>
                     </div>
                   </div>
                 </motion.div>
 
-                {/* Plans List */}
-                <motion.div variants={item} className="space-y-4">
-                  {activePlans.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1.5"><Clock className="w-3 h-3" /> Active Plans</p>
-                      <div className="grid gap-3 sm:grid-cols-2">{activePlans.map((plan) => <PlanCard key={plan.id} plan={plan} onClick={() => { setSelectedPlan(plan); setView("plan-detail"); }} />)}</div>
-                    </div>
-                  )}
-                  {completedPlans.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3" /> Completed Plans</p>
-                      <div className="grid gap-3 sm:grid-cols-2">{completedPlans.map((plan) => <PlanCard key={plan.id} plan={plan} onClick={() => { setSelectedPlan(plan); setView("plan-detail"); }} />)}</div>
-                    </div>
-                  )}
-                  {plans.length === 0 && !isLoading && (
-                    <div className="text-center py-12"><div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3"><Target className="w-6 h-6 text-muted-foreground" /></div><p className="text-sm font-medium text-foreground">No plans yet</p><p className="text-xs text-muted-foreground mt-1">Create your first plan or use a template</p></div>
-                  )}
-                </motion.div>
+                {/* Board or List View */}
+                {plans.length === 0 && !isLoading ? (
+                  <div className="text-center py-12"><div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3"><Target className="w-6 h-6 text-muted-foreground" /></div><p className="text-sm font-medium text-foreground">No plans yet</p><p className="text-xs text-muted-foreground mt-1">Create your first plan or use a template</p></div>
+                ) : tab === "board" ? (
+                  <motion.div variants={item} className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1">
+                    {([
+                      { key: "active", label: "Active", items: activePlans, accent: "text-primary", dot: "bg-primary" },
+                      { key: "overdue", label: "Overdue", items: overduePlans, accent: "text-destructive", dot: "bg-destructive" },
+                      { key: "completed", label: "Completed", items: completedPlans, accent: "text-success", dot: "bg-success" },
+                    ]).map((col) => (
+                      <div key={col.key} className="flex-shrink-0 w-[300px] sm:w-[340px] flex flex-col">
+                        <div className="flex items-center justify-between mb-3 px-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${col.dot}`} />
+                            <p className={`text-xs font-semibold ${col.accent}`}>{col.label}</p>
+                          </div>
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{col.items.length}</span>
+                        </div>
+                        <div className="space-y-3">
+                          {col.items.length === 0 ? (
+                            <div className="border border-dashed border-border rounded-xl p-6 text-center text-[11px] text-muted-foreground">No plans here</div>
+                          ) : col.items.map((plan) => (
+                            <PlanCard key={plan.id} plan={plan} sessions={sessionsByPlan.get(plan.id) || []} hasToday={planHasTodaySession(plan.id)} onClick={() => { setSelectedPlan(plan); setView("plan-detail"); }} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </motion.div>
+                ) : (
+                  // List view
+                  <motion.div variants={item} className="space-y-2">
+                    {[...overduePlans, ...activePlans, ...completedPlans].map((plan) => (
+                      <PlanRow key={plan.id} plan={plan} sessions={sessionsByPlan.get(plan.id) || []} overdue={isPlanOverdue(plan.id)} onClick={() => { setSelectedPlan(plan); setView("plan-detail"); }} />
+                    ))}
+                  </motion.div>
+                )}
               </>
             )}
 
@@ -557,34 +687,141 @@ function CalendarView({ plans, tasks }: { plans: Plan[]; tasks: any[] }) {
   );
 }
 
-// ─── Plan Card ──────────────────────────────
-function PlanCard({ plan, onClick }: { plan: Plan; onClick: () => void }) {
+// ─── Plan Card (redesigned, project-style) ──────────────────────────
+function PlanCard({ plan, sessions = [], hasToday = false, onClick }: { plan: Plan; sessions?: SessionLite[]; hasToday?: boolean; onClick: () => void }) {
   const style = CATEGORY_STYLES[plan.category] || CATEGORY_STYLES.study;
   const daysLeft = plan.end_date ? differenceInDays(parseISO(plan.end_date), new Date()) : null;
-  const isOverdue = daysLeft !== null && daysLeft < 0 && plan.status === "active";
-  const isDueSoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 3 && plan.status === "active";
+  const totalSessions = sessions.length;
+  const doneSessions = sessions.filter((s) => s.is_completed).length;
+  const sessionPct = totalSessions > 0 ? Math.round((doneSessions / totalSessions) * 100) : (plan.progress || 0);
+  const progress = Math.max(plan.progress || 0, sessionPct);
+
+  // Days-remaining pill styling
+  let pill: { text: string; cls: string } | null = null;
+  if (daysLeft === null) {
+    pill = { text: "No deadline", cls: "bg-muted text-muted-foreground" };
+  } else if (daysLeft < 0) {
+    pill = { text: `${Math.abs(daysLeft)}d overdue`, cls: "bg-destructive text-destructive-foreground" };
+  } else if (daysLeft === 0) {
+    pill = { text: "Due today", cls: "bg-destructive/10 text-destructive" };
+  } else if (daysLeft <= 6) {
+    pill = { text: `${daysLeft}d left`, cls: "bg-destructive/10 text-destructive" };
+  } else if (daysLeft <= 14) {
+    pill = { text: `${daysLeft}d left`, cls: "bg-warning/10 text-warning" };
+  } else {
+    pill = { text: `${daysLeft}d left`, cls: "bg-success/10 text-success" };
+  }
+
+  // Progress ring math
+  const r = 20, c = 2 * Math.PI * r;
+  const dash = (progress / 100) * c;
 
   return (
-    <motion.div whileHover={{ y: -2 }} onClick={onClick} className={`glass-card-hover p-4 cursor-pointer border ${isOverdue ? "border-destructive/40" : style.border} space-y-3 relative overflow-hidden`}>
-      {/* Gradient accent */}
-      <div className={`absolute inset-0 bg-gradient-to-br ${style.gradient} opacity-30 pointer-events-none`} />
-      <div className="relative">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-2.5"><span className="text-xl">{plan.emoji}</span><div><h3 className="text-sm font-semibold text-foreground">{plan.title}</h3><p className="text-[11px] text-muted-foreground line-clamp-1">{plan.goal}</p></div></div>
-          <div className="flex flex-col items-end gap-1">
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text} capitalize`}>{plan.category}</span>
-            {isOverdue && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-destructive/10 text-destructive flex items-center gap-0.5"><AlertCircle className="w-2.5 h-2.5" /> Overdue</span>}
-            {isDueSoon && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-warning/10 text-warning flex items-center gap-0.5"><Bell className="w-2.5 h-2.5" /> {daysLeft}d left</span>}
+    <motion.div
+      whileHover={{ scale: 1.02, y: -2 }}
+      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+      onClick={onClick}
+      className={`relative cursor-pointer rounded-2xl border ${style.border} bg-gradient-to-br ${style.gradient} hover:shadow-lg transition-shadow overflow-hidden`}
+    >
+      {/* Colored left border */}
+      <div className={`absolute left-0 top-0 bottom-0 w-1 ${style.text.replace("text-", "bg-")}`} />
+
+      <div className="p-4 pl-5 space-y-3 relative">
+        {/* Top row: emoji + title/goal + ring */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0 flex-1">
+            <span className="text-[40px] leading-none flex-shrink-0">{plan.emoji}</span>
+            <div className="min-w-0 pt-1">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-bold text-foreground truncate">{plan.title}</h3>
+                {hasToday && <span className="w-2 h-2 rounded-full bg-primary animate-pulse flex-shrink-0" title="Session due today" />}
+              </div>
+              {plan.goal && <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">{plan.goal}</p>}
+            </div>
+          </div>
+
+          {/* Progress ring */}
+          <div className="relative flex-shrink-0">
+            <svg width="48" height="48" viewBox="0 0 48 48" className="-rotate-90">
+              <circle cx="24" cy="24" r={r} stroke="hsl(var(--muted))" strokeWidth="4" fill="none" />
+              <circle
+                cx="24" cy="24" r={r}
+                stroke="hsl(var(--primary))" strokeWidth="4" fill="none"
+                strokeLinecap="round"
+                strokeDasharray={`${dash} ${c}`}
+                className="transition-all duration-500"
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-[10px] font-bold text-foreground">{progress}%</span>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-2">
-          {plan.duration && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{plan.duration}</span>}
-          {plan.start_date && <span className="flex items-center gap-1"><CalendarIcon className="w-3 h-3" />{format(parseISO(plan.start_date), "MMM d")}</span>}
-          {plan.end_date && <span>→ {format(parseISO(plan.end_date), "MMM d")}</span>}
-          <span className="flex items-center gap-1 ml-auto"><ChevronRight className="w-3 h-3" /></span>
+
+        {/* Days-left pill */}
+        <div className="flex items-center justify-between gap-2">
+          <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${pill.cls} flex items-center gap-1`}>
+            {daysLeft !== null && daysLeft < 0 ? <AlertCircle className="w-2.5 h-2.5" /> : <Clock className="w-2.5 h-2.5" />}
+            {pill.text}
+          </span>
+          {totalSessions > 0 && (
+            <span className="text-[10px] text-muted-foreground font-medium">{doneSessions}/{totalSessions} sessions</span>
+          )}
         </div>
-        {plan.progress > 0 && (<div className="h-1.5 bg-muted rounded-full overflow-hidden mt-2"><div className="h-full bg-primary rounded-full transition-all" style={{ width: `${Math.min(plan.progress, 100)}%` }} /></div>)}
+
+        {/* Mini progress bar for sessions */}
+        {totalSessions > 0 && (
+          <div className="h-1 bg-muted/60 rounded-full overflow-hidden">
+            <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${sessionPct}%` }} />
+          </div>
+        )}
+
+        {/* Footer row: category badge + chevron */}
+        <div className="flex items-center justify-between pt-1">
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text} capitalize`}>{plan.category}</span>
+          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+        </div>
       </div>
+    </motion.div>
+  );
+}
+
+// ─── Plan Row (List view) ───────────────────────────────────────────
+function PlanRow({ plan, sessions = [], overdue = false, onClick }: { plan: Plan; sessions?: SessionLite[]; overdue?: boolean; onClick: () => void }) {
+  const style = CATEGORY_STYLES[plan.category] || CATEGORY_STYLES.study;
+  const daysLeft = plan.end_date ? differenceInDays(parseISO(plan.end_date), new Date()) : null;
+  const totalSessions = sessions.length;
+  const doneSessions = sessions.filter((s) => s.is_completed).length;
+  const sessionPct = totalSessions > 0 ? Math.round((doneSessions / totalSessions) * 100) : (plan.progress || 0);
+
+  let pillCls = "bg-muted text-muted-foreground", pillText = "No deadline";
+  if (daysLeft !== null) {
+    if (daysLeft < 0) { pillCls = "bg-destructive text-destructive-foreground"; pillText = `${Math.abs(daysLeft)}d overdue`; }
+    else if (daysLeft <= 6) { pillCls = "bg-destructive/10 text-destructive"; pillText = `${daysLeft}d left`; }
+    else if (daysLeft <= 14) { pillCls = "bg-warning/10 text-warning"; pillText = `${daysLeft}d left`; }
+    else { pillCls = "bg-success/10 text-success"; pillText = `${daysLeft}d left`; }
+  }
+
+  return (
+    <motion.div whileHover={{ x: 2 }} onClick={onClick}
+      className={`flex items-center gap-3 p-3 rounded-xl border ${overdue ? "border-destructive/30" : "border-border"} bg-card hover:bg-muted/40 cursor-pointer transition-colors`}>
+      <span className="text-2xl flex-shrink-0">{plan.emoji}</span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-semibold text-foreground truncate">{plan.title}</p>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.bg} ${style.text} capitalize flex-shrink-0`}>{plan.category}</span>
+        </div>
+        {plan.goal && <p className="text-[11px] text-muted-foreground truncate">{plan.goal}</p>}
+        <div className="flex items-center gap-2 mt-1.5">
+          <div className="h-1 flex-1 bg-muted rounded-full overflow-hidden max-w-[200px]">
+            <div className="h-full bg-primary rounded-full" style={{ width: `${sessionPct}%` }} />
+          </div>
+          <span className="text-[10px] text-muted-foreground font-medium">{sessionPct}%</span>
+          {totalSessions > 0 && <span className="text-[10px] text-muted-foreground">· {doneSessions}/{totalSessions}</span>}
+        </div>
+      </div>
+      <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${pillCls} flex-shrink-0`}>{pillText}</span>
+      <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
     </motion.div>
   );
 }
