@@ -99,7 +99,7 @@ export function NotificationCenter() {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors relative"
+        className="w-9 h-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors relative flex-shrink-0"
         title="Notifications"
       >
         <Bell className="w-4 h-4" />
