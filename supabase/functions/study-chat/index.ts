@@ -49,7 +49,7 @@ async function streamGemini(
   messages: ChatMessage[],
   maxOutputTokens: number,
 ): Promise<Response> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:streamGenerateContent?key=${apiKey}&alt=sse`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?key=${apiKey}&alt=sse`;
 
   const body = {
     system_instruction: { parts: [{ text: systemPrompt }] },
