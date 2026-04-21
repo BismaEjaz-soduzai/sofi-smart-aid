@@ -65,6 +65,8 @@ export default function Planner() {
   const createPlan = useCreatePlan();
   const deletePlan = useDeletePlan();
   const updatePlan = useUpdatePlan();
+  const navigate = useNavigate();
+  const notifiedRef = useRef<Set<string>>(new Set());
   const [view, setView] = useState<View>("overview");
   const [tab, setTab] = useState<Tab>("plans");
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
@@ -79,6 +81,49 @@ export default function Planner() {
 
   const activePlans = plans.filter((p) => p.status === "active");
   const completedPlans = plans.filter((p) => p.status === "completed");
+
+  // Milestone notifications — checks every hour and on plan changes
+  useEffect(() => {
+    if (activePlans.length === 0) return;
+
+    const checkMilestones = async () => {
+      if (typeof Notification !== "undefined" && Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+      const today = new Date();
+      for (const plan of activePlans) {
+        const { data: upcoming } = await supabase
+          .from("plan_sessions")
+          .select("id,title,date,is_completed")
+          .eq("plan_id", plan.id)
+          .eq("is_completed", false);
+        (upcoming || []).forEach((s: any) => {
+          if (!s.date) return;
+          const d = parseISO(s.date);
+          const diff = differenceInDays(d, today);
+          if (diff < 0 || diff > 3) return;
+          const key = `${plan.id}:${s.id}`;
+          if (notifiedRef.current.has(key)) return;
+          notifiedRef.current.add(key);
+          const when = diff === 0 ? "today" : diff === 1 ? "tomorrow" : `in ${diff} days`;
+          toast.info(`📌 ${s.title}`, { description: `${plan.title} · due ${when}` });
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            try {
+              new Notification(`SOFI — Milestone due ${when}`, {
+                body: `${s.title} (${plan.title})`,
+                icon: "/favicon.png",
+              });
+            } catch {}
+          }
+        });
+      }
+    };
+
+    checkMilestones();
+    const interval = setInterval(checkMilestones, 60 * 60 * 1000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plans]);
 
   const handleCreate = async () => {
     if (!form.title.trim()) return;
