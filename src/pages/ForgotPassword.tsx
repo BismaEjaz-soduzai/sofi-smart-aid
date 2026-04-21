@@ -20,7 +20,7 @@ export default function ForgotPassword() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError("Enter a valid email"); return; }
     setError("");
     setLoading(true);
-    const { error: err } = await resetPassword(email);
+    const { error: err } = await resetPassword(email.trim().toLowerCase());
     setLoading(false);
     if (err) {
       toast.error(err);
