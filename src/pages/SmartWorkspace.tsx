@@ -1386,7 +1386,7 @@ export default function SmartWorkspace() {
           )}
         </DialogContent>
       </Dialog>
-      )}
+
 
       <AnimatePresence>
         {viewingFile && (
