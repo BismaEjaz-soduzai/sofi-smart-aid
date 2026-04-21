@@ -1157,16 +1157,43 @@ export default function SmartWorkspace() {
               </div>
             </div>
             <div className="flex-1 overflow-hidden">
-              {viewingFile.previewText ? (
+              {viewingFile.previewMode === "document" ? (
                 <div className="h-full overflow-y-auto p-6 bg-card">
                   <div className="max-w-4xl mx-auto space-y-4">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-foreground">Document preview</p>
-                      <p className="text-xs text-muted-foreground">AI-readable extracted text</p>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Document preview</p>
+                        <p className="text-xs text-muted-foreground mt-1">Readable in-app preview for DOCX and PPTX files</p>
+                      </div>
+                      {viewingFile.url && (
+                        <a href={viewingFile.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
+                          <Eye className="w-3.5 h-3.5" /> Original file
+                        </a>
+                      )}
                     </div>
-                    <div className="rounded-xl border border-border bg-background p-4">
-                      <pre className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground font-sans">{viewingFile.previewText}</pre>
-                    </div>
+                    <article className="rounded-xl border border-border bg-background p-5 shadow-sm">
+                      {viewingFile.previewText ? (
+                        <div className="prose prose-sm dark:prose-invert max-w-none">
+                          {viewingFile.previewText
+                            .split(/\n{2,}/)
+                            .filter(Boolean)
+                            .map((block, index) => {
+                              const trimmed = block.trim();
+                              const isHeading = trimmed.length < 80 && !trimmed.includes(":") && trimmed === trimmed.toUpperCase();
+                              if (isHeading) {
+                                return <h3 key={index}>{trimmed}</h3>;
+                              }
+                              return <p key={index} className="whitespace-pre-wrap leading-7 text-foreground">{trimmed}</p>;
+                            })}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-16 text-center">
+                          <FileText className="w-8 h-8 text-muted-foreground mb-3" />
+                          <p className="text-sm font-medium text-foreground">Preview text is still being prepared</p>
+                          <p className="text-xs text-muted-foreground mt-1">Use Original file to open the uploaded document directly.</p>
+                        </div>
+                      )}
+                    </article>
                   </div>
                 </div>
               ) : viewingFile.url && (["PDF", "TXT"].includes(viewingFile.type) || viewingFile.name.toLowerCase().endsWith(".pdf") || viewingFile.name.toLowerCase().endsWith(".txt")) ? (
