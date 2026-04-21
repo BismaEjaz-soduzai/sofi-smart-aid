@@ -23,6 +23,12 @@ export interface WorkspaceRoom {
   color: string;
   created_at: string;
   updated_at: string;
+  invite_code: string;
+}
+
+export function makeInviteCode(id: string): string {
+  const clean = id.replace(/-/g, "").toUpperCase();
+  return `${clean.slice(0, 3)}-${clean.slice(3, 6)}`;
 }
 
 export function useWorkspaceRooms() {
@@ -37,7 +43,7 @@ export function useWorkspaceRooms() {
         .select("*")
         .order("created_at", { ascending: true });
       if (error) throw error;
-      return data as WorkspaceRoom[];
+      return (data || []).map((r) => ({ ...r, invite_code: makeInviteCode(r.id) })) as WorkspaceRoom[];
     },
     enabled: !!user,
   });
@@ -68,7 +74,20 @@ export function useWorkspaceRooms() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  return { rooms: roomsQuery.data || [], isLoading: roomsQuery.isLoading, createRoom, deleteRoom };
+  const joinRoomByCode = useMutation({
+    mutationFn: async (code: string) => {
+      const target = code.trim().toUpperCase();
+      if (!target) throw new Error("Enter a code");
+      const { data, error } = await supabase.from("workspace_rooms").select("*");
+      if (error) throw error;
+      const found = (data || []).find((r) => makeInviteCode(r.id) === target);
+      if (!found) throw new Error("Room not found");
+      return { ...found, invite_code: makeInviteCode(found.id) } as WorkspaceRoom;
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  return { rooms: roomsQuery.data || [], isLoading: roomsQuery.isLoading, createRoom, deleteRoom, joinRoomByCode };
 }
 
 export function useStudyFiles(roomId?: string | null) {
