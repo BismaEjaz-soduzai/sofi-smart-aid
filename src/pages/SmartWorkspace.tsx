@@ -443,6 +443,14 @@ export default function SmartWorkspace() {
     }
   }, [roomMessages.length]);
 
+  // Ring + toast on incoming room calls
+  useIncomingCallNotifier(
+    roomMessages as any,
+    user?.id,
+    (callUrl) => roomCall.joinCall(callUrl),
+    !!roomCall.activeCall,
+  );
+
   const handleStartRoomCall = (isVideo: boolean) => {
     if (!activeRoomId) return;
     roomCall.startCall(isVideo, myName, async (displayText, callUrl) => {
@@ -457,7 +465,8 @@ export default function SmartWorkspace() {
 
   const handleSaveRoomRecording = async (blob: Blob, filename: string) => {
     if (!activeRoomId || !user) return;
-    const path = `${user.id}/recordings/${filename}`;
+    // Save under the ROOM folder so every member sees it
+    const path = `rooms/${activeRoomId}/recordings/${filename}`;
     const { error } = await supabase.storage.from("study-files").upload(path, blob, { contentType: "video/webm" });
     if (error) { toast.error("Recording upload failed"); return; }
     const { data } = await supabase.storage.from("study-files").createSignedUrl(path, 60 * 60 * 24 * 365);
@@ -470,7 +479,7 @@ export default function SmartWorkspace() {
       fileUrl: data?.signedUrl || "",
       fileSize: blob.size,
     });
-    toast.success("Recording saved to chat");
+    toast.success("Recording saved to team folder");
   };
 
   const handleSendChat = async () => {
