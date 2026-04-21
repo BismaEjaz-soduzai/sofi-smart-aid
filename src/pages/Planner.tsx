@@ -11,7 +11,8 @@ import {
 import { usePlans, useCreatePlan, useDeletePlan, useUpdatePlan, usePlanSessions, useCreateSession, useToggleSession, type Plan, type PlanInsert } from "@/hooks/usePlans";
 import { useTasks } from "@/hooks/useTasks";
 import { supabase } from "@/integrations/supabase/client";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, parseISO, startOfWeek, endOfWeek, differenceInDays, isPast, isToday, isTomorrow } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, parseISO, startOfWeek, endOfWeek, differenceInDays, isPast, isToday, isTomorrow, addDays, addWeeks, subWeeks, isWeekend } from "date-fns";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
 import ReactMarkdown from "react-markdown";
@@ -50,11 +51,76 @@ const COLOR_OPTIONS = [
 const EMOJI_OPTIONS = ["📘", "📝", "🎓", "🚀", "💼", "🎤", "📚", "🧠", "⚡", "🎯", "💡", "🔥"];
 
 const SUGGESTED_AI_PROMPTS = [
-  "Make me a 2-month study plan for Software Testing",
-  "Create a weekly revision plan for Cloud Computing",
-  "Build a 5-day assignment completion plan",
-  "Generate a 30-day FYP roadmap",
+  "2-month Software Engineering exam prep",
+  "Weekly revision plan for 5 subjects",
+  "30-day FYP completion roadmap",
+  "5-day assignment sprint plan",
+  "1-month internship preparation",
+  "Semester study schedule",
+  "7-day exam crash course",
+  "Daily routine with study blocks",
 ];
+
+const TEMPLATE_PROMPTS: Record<string, string> = {
+  "2-Month Test Prep": "Create a 2-month test preparation plan with daily study sessions, weekly reviews, and practice tests. Include specific time allocations per topic.",
+  "Weekly Study Plan": "Create a 7-day weekly study plan covering multiple subjects with balanced daily sessions, breaks, and a Sunday review.",
+  "Exam Countdown": "Create a 14-day exam countdown plan with topic-by-topic revision, mock tests on day 7 and day 13, and a light review on the final day.",
+  "FYP Work Plan": "Create a 3-month Final Year Project plan with weekly deliverables, supervisor meeting milestones, prototype checkpoints, and submission deadlines.",
+  "Assignment Plan": "Create a 7-day assignment completion plan: research, outline, draft, revise, polish, proofread, submit. One clear focus per day.",
+  "Presentation Prep": "Create a 3-day presentation preparation plan: day 1 outline & research, day 2 build slides & visuals, day 3 rehearse & polish delivery.",
+  "7-Day Revision Sprint": "Create an intensive 7-day revision sprint covering all key topics, with daily active recall, practice questions, and a final mock test.",
+};
+
+// Parse "Sessions" / "Day-by-day" lines from AI markdown into session objects.
+function parseAiSessions(markdown: string, startDate: string | null): Array<{ title: string; date: string | null }> {
+  if (!markdown) return [];
+  const lines = markdown.split(/\r?\n/);
+  const out: Array<{ title: string; date: string | null }> = [];
+  const start = startDate ? parseISO(startDate) : null;
+
+  // Pattern A: "### Day N — YYYY-MM-DD — focus"
+  // Pattern B: "- [YYYY-MM-DD] title — desc"  or  "- [Day N] title — desc"
+  // Pattern C: numbered "1. title"
+  const dayHeader = /^#{2,4}\s*Day\s+(\d+)\s*[—\-:]\s*(\d{4}-\d{2}-\d{2})?\s*[—\-:]?\s*(.+)?$/i;
+  const bracketLine = /^[-*]\s*\[?(?:Day\s+(\d+)|(\d{4}-\d{2}-\d{2}))\]?\s*[—\-:]?\s*(.+)$/i;
+  const numbered = /^(\d+)\.\s+(.+)$/;
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    let m = line.match(dayHeader);
+    if (m) {
+      const dayN = parseInt(m[1], 10);
+      const explicit = m[2] || null;
+      const title = (m[3] || `Day ${dayN}`).replace(/[*_`]/g, "").trim();
+      const date = explicit || (start ? format(addDays(start, dayN - 1), "yyyy-MM-dd") : null);
+      out.push({ title, date });
+      continue;
+    }
+    m = line.match(bracketLine);
+    if (m) {
+      const dayN = m[1] ? parseInt(m[1], 10) : null;
+      const explicit = m[2] || null;
+      const title = m[3].replace(/[*_`]/g, "").trim();
+      const date = explicit || (dayN && start ? format(addDays(start, dayN - 1), "yyyy-MM-dd") : null);
+      out.push({ title, date });
+      continue;
+    }
+    m = line.match(numbered);
+    if (m && /session|day|week|milestone|topic/i.test(m[2])) {
+      out.push({ title: m[2].replace(/[*_`]/g, "").trim(), date: null });
+    }
+  }
+  // Dedupe by title+date
+  const seen = new Set<string>();
+  return out.filter((s) => {
+    const k = `${s.title}::${s.date}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  }).slice(0, 30);
+}
 
 type View = "overview" | "create" | "ai-generate" | "plan-detail";
 type Tab = "board" | "list" | "calendar";
@@ -76,6 +142,7 @@ export default function Planner() {
   const createPlan = useCreatePlan();
   const deletePlan = useDeletePlan();
   const updatePlan = useUpdatePlan();
+  const createSession = useCreateSession();
   const activity = useDailyActivity(7);
   const navigate = useNavigate();
   const notifiedRef = useRef<Set<string>>(new Set());
@@ -215,6 +282,17 @@ export default function Planner() {
     setView("create");
   };
 
+  const [templateLoading, setTemplateLoading] = useState<string | null>(null);
+  const handleTemplateAI = async (t: typeof TEMPLATES[0]) => {
+    if (templateLoading) return;
+    setTemplateLoading(t.title);
+    setForm((f) => ({ ...f, title: t.title, goal: t.goal, category: t.category, emoji: t.emoji, color_tag: t.color, duration: t.duration, source_type: "ai" }));
+    setAiPrompt(TEMPLATE_PROMPTS[t.title] || `Create a ${t.duration} plan for: ${t.goal}`);
+    setView("ai-generate");
+    // Kick off generation on next tick after state settles
+    setTimeout(() => { handleAiGenerate(); setTemplateLoading(null); }, 50);
+  };
+
   const buildContextualPrompt = (extra: string) => {
     // Compute real day count from dates if both are set
     let dayInfo = "";
@@ -318,9 +396,16 @@ RULES YOU MUST FOLLOW:
     if (!aiOutput.trim()) { toast.error("Generate a plan first"); return; }
     const title = (aiPlanTitle.trim() || aiPrompt.trim().slice(0, 60) || "Untitled AI Plan");
     try {
-      await createPlan.mutateAsync({ title, goal: aiPrompt, category: "study", emoji: "🧠", color_tag: "purple", description: aiOutput, source_type: "ai" });
-      toast.success("Plan saved! Open it to view the full plan.");
-      setView("overview"); setAiPrompt(""); setAiOutput(""); setAiPlanTitle("");
+      const created = await createPlan.mutateAsync({ title, goal: aiPrompt, category: form.category || "study", emoji: form.emoji || "🧠", color_tag: form.color_tag || "purple", start_date: form.start_date || null, end_date: form.end_date || null, description: aiOutput, source_type: "ai" });
+      // Auto-create sessions parsed from the AI output
+      const parsed = parseAiSessions(aiOutput, created.start_date);
+      let createdCount = 0;
+      for (const s of parsed) {
+        try { await createSession.mutateAsync({ plan_id: created.id, title: s.title, date: s.date }); createdCount++; }
+        catch {}
+      }
+      toast.success(createdCount > 0 ? `Plan saved with ${createdCount} sessions created automatically` : "Plan saved!");
+      setView("overview"); setAiPrompt(""); setAiOutput(""); setAiPlanTitle(""); resetForm();
     } catch { toast.error("Failed to save plan"); }
   };
 
@@ -328,8 +413,14 @@ RULES YOU MUST FOLLOW:
     if (!aiOutput.trim()) { toast.error("Generate a plan first"); return; }
     if (!form.title.trim()) { toast.error("Add a title before saving"); return; }
     try {
-      await createPlan.mutateAsync({ ...form, description: aiOutput, source_type: "ai" });
-      toast.success("Plan saved! Open it to view the full plan.");
+      const created = await createPlan.mutateAsync({ ...form, description: aiOutput, source_type: "ai" });
+      const parsed = parseAiSessions(aiOutput, created.start_date);
+      let createdCount = 0;
+      for (const s of parsed) {
+        try { await createSession.mutateAsync({ plan_id: created.id, title: s.title, date: s.date }); createdCount++; }
+        catch {}
+      }
+      toast.success(createdCount > 0 ? `Plan saved with ${createdCount} sessions created automatically` : "Plan saved!");
       setView("overview"); resetForm(); setAiOutput(""); setAiPrompt("");
     } catch { toast.error("Failed to save plan"); }
   };
@@ -366,7 +457,7 @@ RULES YOU MUST FOLLOW:
 
       <div className="flex-1 overflow-auto">
         {tab === "calendar" ? (
-          <CalendarView plans={plans} tasks={tasks} />
+          <CalendarView plans={plans} tasks={tasks} planSessions={allSessions} onOpenPlan={(p) => { setSelectedPlan(p); setView("plan-detail"); }} onAddSession={async (planId, title, date) => { await createSession.mutateAsync({ plan_id: planId, title, date }); setAllSessions((cur) => [...cur, { id: `tmp-${Date.now()}`, plan_id: planId, title, date, is_completed: false }]); toast.success("Session added"); }} onToggleSession={toggleTodaySession} />
         ) : (
           <div className="p-4 lg:p-6 max-w-6xl mx-auto space-y-5">
             {view === "overview" && (
@@ -423,14 +514,28 @@ RULES YOU MUST FOLLOW:
 
                 {/* Templates */}
                 <motion.div variants={item}>
-                  <p className="text-xs font-medium text-muted-foreground mb-3">Quick Templates</p>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-medium text-muted-foreground">Quick Templates</p>
+                    <p className="text-[10px] text-muted-foreground">⚡ One-click AI generate · long-press to customize</p>
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                     {TEMPLATES.map((t) => {
                       const style = CATEGORY_STYLES[t.category] || CATEGORY_STYLES.study;
+                      const loading = templateLoading === t.title;
                       return (
-                        <button key={t.title} onClick={() => handleTemplate(t)} className={`flex items-center gap-3 p-3 rounded-xl border ${style.border} ${style.bg} hover:shadow-sm transition-all text-left group`}>
-                          <span className="text-xl">{t.emoji}</span>
-                          <div className="min-w-0"><p className={`text-xs font-semibold ${style.text} truncate`}>{t.title}</p><p className="text-[10px] text-muted-foreground">{t.duration}</p></div>
+                        <button
+                          key={t.title}
+                          onClick={() => handleTemplateAI(t)}
+                          onContextMenu={(e) => { e.preventDefault(); handleTemplate(t); }}
+                          disabled={loading}
+                          title="Click: AI generate · Right-click: edit form"
+                          className={`relative flex items-center gap-3 p-3 rounded-xl border ${style.border} ${style.bg} hover:shadow-md hover:scale-[1.02] active:scale-95 transition-all text-left group disabled:opacity-60`}>
+                          <span className="text-xl flex-shrink-0">{t.emoji}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className={`text-xs font-semibold ${style.text} truncate`}>{t.title}</p>
+                            <p className="text-[10px] text-muted-foreground">{t.duration}</p>
+                          </div>
+                          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-info flex-shrink-0" /> : <Sparkles className="w-3 h-3 text-info opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />}
                         </button>
                       );
                     })}
@@ -603,86 +708,207 @@ RULES YOU MUST FOLLOW:
   );
 }
 
-// ─── Calendar View ──────────────────────────
-function CalendarView({ plans, tasks }: { plans: Plan[]; tasks: any[] }) {
+// ─── Calendar View (Google-Calendar-style month grid) ──────────
+function CalendarView({
+  plans, tasks, planSessions, onOpenPlan, onAddSession, onToggleSession,
+}: {
+  plans: Plan[]; tasks: any[]; planSessions: SessionLite[];
+  onOpenPlan: (p: Plan) => void;
+  onAddSession: (planId: string, title: string, date: string) => Promise<void>;
+  onToggleSession: (sessionId: string, planId: string) => Promise<void>;
+}) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [openDay, setOpenDay] = useState<string | null>(null);
+  const [addDay, setAddDay] = useState<string | null>(null);
+  const [addPlanId, setAddPlanId] = useState<string>("");
+  const [addTitle, setAddTitle] = useState("");
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
   const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: calStart, end: calEnd });
-
-  const eventMap = useMemo(() => {
-    const map = new Map<string, { type: string; title: string; color: string }[]>();
-    const addEvent = (dateStr: string, ev: { type: string; title: string; color: string }) => {
-      if (!map.has(dateStr)) map.set(dateStr, []);
-      map.get(dateStr)!.push(ev);
-    };
-    plans.forEach((p) => {
-      if (p.start_date) addEvent(p.start_date, { type: "plan-start", title: `📅 ${p.title} starts`, color: "bg-primary" });
-      if (p.end_date) addEvent(p.end_date, { type: "plan-end", title: `🏁 ${p.title} ends`, color: "bg-info" });
-    });
-    tasks.forEach((t: any) => {
-      if (t.due_date) addEvent(t.due_date, { type: "task", title: `✅ ${t.title}`, color: t.completed ? "bg-success" : "bg-warning" });
-    });
-    return map;
-  }, [plans, tasks]);
-
-  const selectedEvents = selectedDate ? eventMap.get(format(selectedDate, "yyyy-MM-dd")) || [] : [];
   const today = new Date();
 
+  const planById = useMemo(() => new Map(plans.map((p) => [p.id, p])), [plans]);
+
+  // Map date -> sessions[]
+  const sessionsByDate = useMemo(() => {
+    const m = new Map<string, Array<SessionLite & { plan?: Plan }>>();
+    planSessions.forEach((s) => {
+      if (!s.date) return;
+      const arr = m.get(s.date) || [];
+      arr.push({ ...s, plan: planById.get(s.plan_id) });
+      m.set(s.date, arr);
+    });
+    return m;
+  }, [planSessions, planById]);
+
+  const taskByDate = useMemo(() => {
+    const m = new Map<string, any[]>();
+    tasks.forEach((t: any) => { if (t.due_date) { const a = m.get(t.due_date) || []; a.push(t); m.set(t.due_date, a); } });
+    return m;
+  }, [tasks]);
+
+  const colorForCategory = (cat: string): string => {
+    const c = (CATEGORY_STYLES[cat] || CATEGORY_STYLES.study).text.replace("text-", "bg-");
+    return c;
+  };
+
+  const handleQuickAdd = async () => {
+    if (!addDay || !addPlanId || !addTitle.trim()) return;
+    await onAddSession(addPlanId, addTitle.trim(), addDay);
+    setAddDay(null); setAddTitle(""); setAddPlanId("");
+  };
+
   return (
-    <div className="p-4 lg:p-6 max-w-4xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-sm hover:text-foreground transition-colors">← Prev</button>
-        <h2 className="text-lg font-bold text-foreground">{format(currentMonth, "MMMM yyyy")}</h2>
-        <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-sm hover:text-foreground transition-colors">Next →</button>
+    <div className="p-4 lg:p-6 max-w-5xl mx-auto space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h2 className="text-xl font-bold text-foreground">{format(currentMonth, "MMMM yyyy")}</h2>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors" title="Previous month">‹</button>
+          <button onClick={() => setCurrentMonth(new Date())} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-colors">Today</button>
+          <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors" title="Next month">›</button>
+        </div>
       </div>
+
+      {/* Weekday header */}
       <div className="grid grid-cols-7 gap-1">
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-          <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">{d}</div>
+        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => (
+          <div key={d} className={`text-center text-[11px] font-semibold uppercase tracking-wider py-2 ${i >= 5 ? "text-muted-foreground/70" : "text-muted-foreground"}`}>{d}</div>
         ))}
       </div>
+
+      {/* Day grid */}
       <div className="grid grid-cols-7 gap-1">
         {days.map((day) => {
           const dateKey = format(day, "yyyy-MM-dd");
-          const events = eventMap.get(dateKey) || [];
+          const sessions = sessionsByDate.get(dateKey) || [];
+          const dayTasks = taskByDate.get(dateKey) || [];
           const isCurrentMonth = isSameMonth(day, currentMonth);
           const isToday_ = isSameDay(day, today);
-          const isSelected = selectedDate && isSameDay(day, selectedDate);
+          const weekend = isWeekend(day);
+
+          const cellBg = isToday_ ? "bg-primary/5" : weekend ? "bg-muted/20" : "bg-card";
+          const cellBorder = isToday_ ? "border-primary/30" : "border-border";
+
           return (
-            <button key={dateKey} onClick={() => setSelectedDate(day)}
-              className={`relative min-h-[70px] p-1.5 rounded-lg border text-left transition-all ${isSelected ? "border-primary bg-primary/5" : isToday_ ? "border-primary/40 bg-primary/5" : "border-border hover:border-primary/20"} ${!isCurrentMonth ? "opacity-40" : ""}`}>
-              <span className={`text-xs font-medium ${isToday_ ? "text-primary font-bold" : "text-foreground"}`}>{format(day, "d")}</span>
-              <div className="mt-1 space-y-0.5">
-                {events.slice(0, 2).map((ev, i) => (
-                  <div key={i} className={`${ev.color} rounded-sm px-1 py-0.5 text-[9px] text-white truncate leading-tight`}>{ev.title}</div>
-                ))}
-                {events.length > 2 && <p className="text-[9px] text-muted-foreground">+{events.length - 2} more</p>}
-              </div>
-            </button>
+            <Popover key={dateKey} open={openDay === dateKey} onOpenChange={(o) => setOpenDay(o ? dateKey : null)}>
+              <PopoverTrigger asChild>
+                <div
+                  className={`group relative min-h-[88px] p-1.5 rounded-lg border ${cellBorder} ${cellBg} text-left transition-all hover:border-primary/40 cursor-pointer ${!isCurrentMonth ? "opacity-40" : ""}`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    {isToday_ ? (
+                      <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">{format(day, "d")}</span>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-foreground px-1">{format(day, "d")}</span>
+                    )}
+                    {plans.length > 0 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setAddDay(dateKey); setAddPlanId(plans[0]?.id || ""); }}
+                        className="opacity-0 group-hover:opacity-100 w-4 h-4 rounded bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-all"
+                        title="Add session"
+                      >+</button>
+                    )}
+                  </div>
+                  <div className="space-y-0.5">
+                    {sessions.slice(0, 2).map((s) => {
+                      const cat = s.plan?.category || "study";
+                      const dot = colorForCategory(cat);
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={(e) => { e.stopPropagation(); if (s.plan) onOpenPlan(s.plan); }}
+                          className={`w-full flex items-center gap-1 px-1 py-0.5 rounded-sm bg-muted/50 hover:bg-muted transition-colors ${s.is_completed ? "opacity-50" : ""}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${dot} flex-shrink-0`} />
+                          <span className={`text-[9px] truncate text-foreground ${s.is_completed ? "line-through" : ""}`}>{s.title}</span>
+                        </button>
+                      );
+                    })}
+                    {sessions.length > 2 && <p className="text-[9px] text-muted-foreground px-1">+{sessions.length - 2} more</p>}
+                    {dayTasks.length > 0 && (
+                      <div className="flex gap-0.5 px-1 pt-0.5">
+                        {dayTasks.slice(0, 5).map((t: any) => (
+                          <span key={t.id} className={`w-1 h-1 rounded-full ${t.completed ? "bg-success" : "bg-warning"}`} title={t.title} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-72 p-3 space-y-2">
+                <p className="text-xs font-semibold text-foreground">{format(day, "EEEE, MMMM d")}</p>
+                {sessions.length === 0 && dayTasks.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No sessions or tasks</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-60 overflow-auto">
+                    {sessions.map((s) => (
+                      <div key={s.id} className="flex items-center gap-2 p-1.5 rounded-md bg-muted/40">
+                        <button onClick={() => onToggleSession(s.id, s.plan_id)} disabled={s.is_completed}
+                          className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${s.is_completed ? "bg-success border-success" : "border-muted-foreground/40 hover:border-primary"}`}>
+                          {s.is_completed && <Check className="w-2.5 h-2.5 text-success-foreground" />}
+                        </button>
+                        <span className="text-base">{s.plan?.emoji}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-xs font-medium truncate ${s.is_completed ? "text-muted-foreground line-through" : "text-foreground"}`}>{s.title}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">{s.plan?.title}</p>
+                        </div>
+                        {s.plan && <button onClick={() => { onOpenPlan(s.plan!); setOpenDay(null); }} className="text-[10px] text-primary hover:underline flex-shrink-0">Open</button>}
+                      </div>
+                    ))}
+                    {dayTasks.map((t: any) => (
+                      <div key={t.id} className="flex items-center gap-2 p-1.5 rounded-md bg-muted/40">
+                        <span className={`w-2 h-2 rounded-full ${t.completed ? "bg-success" : "bg-warning"}`} />
+                        <p className={`text-xs ${t.completed ? "line-through text-muted-foreground" : "text-foreground"}`}>✅ {t.title}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {plans.length > 0 && (
+                  <button
+                    onClick={() => { setAddDay(dateKey); setAddPlanId(plans[0]?.id || ""); setOpenDay(null); }}
+                    className="w-full flex items-center justify-center gap-1 mt-2 px-2 py-1.5 rounded-md bg-primary/10 text-primary text-[11px] font-semibold hover:bg-primary/20 transition-colors"
+                  >
+                    <Plus className="w-3 h-3" /> Add session on this day
+                  </button>
+                )}
+              </PopoverContent>
+            </Popover>
           );
         })}
       </div>
-      {selectedDate && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-foreground">{format(selectedDate, "EEEE, MMMM d, yyyy")}</h3>
-          {selectedEvents.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No events on this day</p>
-          ) : (
-            <div className="space-y-2">
-              {selectedEvents.map((ev, i) => (
-                <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
-                  <div className={`w-2 h-2 rounded-full ${ev.color} flex-shrink-0`} />
-                  <span className="text-sm text-foreground">{ev.title}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </motion.div>
-      )}
+
+      {/* Quick-add modal */}
+      <AnimatePresence>
+        {addDay && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+            onClick={() => setAddDay(null)}>
+            <motion.div initial={{ scale: 0.95, y: 8 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 8 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-card border border-border rounded-2xl p-5 w-full max-w-sm space-y-3 shadow-xl">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-foreground">Add session — {format(parseISO(addDay), "MMM d")}</p>
+                <button onClick={() => setAddDay(null)} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Plan</label>
+                <select value={addPlanId} onChange={(e) => setAddPlanId(e.target.value)} className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none">
+                  {plans.map((p) => <option key={p.id} value={p.id}>{p.emoji} {p.title}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Session title</label>
+                <input value={addTitle} onChange={(e) => setAddTitle(e.target.value)} autoFocus placeholder="e.g. Review chapter 5" className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring" onKeyDown={(e) => { if (e.key === "Enter") handleQuickAdd(); }} />
+              </div>
+              <button onClick={handleQuickAdd} disabled={!addTitle.trim() || !addPlanId} className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40">Add Session</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1091,76 +1317,386 @@ function PlanDetail({ plan, navigate, onBack, onDelete, onUpdate }: { plan: Plan
           )}
 
           {/* Sessions */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Sessions / Milestones</p>
-              <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"><Plus className="w-3 h-3" /> Add</button>
-            </div>
-            <AnimatePresence>
-              {showAdd && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-3">
-                  <div className="glass-card p-4 space-y-3">
-                    <input value={sessionForm.title} onChange={(e) => setSessionForm({ ...sessionForm, title: e.target.value })} placeholder="Session title" className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none" />
-                    <div className="flex gap-2">
-                      <input type="date" value={sessionForm.date} onChange={(e) => setSessionForm({ ...sessionForm, date: e.target.value })} className="flex-1 bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none" />
-                      <button onClick={addSession} disabled={!sessionForm.title.trim()} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-40">Add</button>
-                      <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-lg bg-muted text-muted-foreground text-sm font-medium">Cancel</button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <div className="space-y-2">
-              {sessions.map((s, idx) => {
-                const sessionDate = s.date ? parseISO(s.date) : null;
-                const sessionOverdue = sessionDate && isPast(sessionDate) && !isToday(sessionDate) && !s.is_completed;
-                const sessionToday = sessionDate && isToday(sessionDate);
-                const sessionTomorrow = sessionDate && isTomorrow(sessionDate);
-
-                return (
-                  <motion.div key={s.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.03 }}
-                    className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${s.is_completed ? "bg-muted/20 border-border" : sessionOverdue ? "bg-destructive/5 border-destructive/30" : sessionToday ? "bg-primary/5 border-primary/30" : "bg-card border-border hover:border-primary/20"}`}>
-                    <button onClick={async () => {
-                      const willComplete = !s.is_completed;
-                      await toggleSession.mutateAsync({ id: s.id, is_completed: willComplete, plan_id: plan.id });
-                      if (willComplete) toast.success("Milestone complete! 🎉");
-                    }}
-                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${s.is_completed ? "bg-primary border-primary" : "border-muted-foreground/30 hover:border-primary"}`}>
-                      {s.is_completed && <CheckCircle2 className="w-3.5 h-3.5 text-primary-foreground" />}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className={`text-sm font-medium ${s.is_completed ? "text-muted-foreground line-through" : "text-foreground"}`}>{s.title}</p>
-                        {!s.is_completed && sessionToday && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary text-primary-foreground animate-pulse">TODAY</span>
-                        )}
-                        {!s.is_completed && sessionTomorrow && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-warning text-warning-foreground">TOMORROW</span>
-                        )}
-                        {sessionOverdue && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-destructive text-destructive-foreground flex items-center gap-1">
-                            <AlertCircle className="w-2.5 h-2.5" /> OVERDUE
-                          </span>
-                        )}
-                      </div>
-                      {s.date && <span className="text-[10px] text-muted-foreground">{format(parseISO(s.date), "MMM d, yyyy")}</span>}
-                    </div>
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${s.is_completed ? "bg-success" : sessionOverdue ? "bg-destructive" : sessionToday ? "bg-primary" : "bg-muted-foreground/20"}`} />
-                  </motion.div>
-                );
-              })}
-              {sessions.length === 0 && (
-                <div className="text-center py-10 bg-muted/20 rounded-xl border border-dashed border-border">
-                  <Target className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">No sessions yet</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Add milestones to track your progress</p>
-                </div>
-              )}
-            </div>
-          </div>
+          <SessionsSection
+            plan={plan}
+            sessions={sessions as any}
+            showAdd={showAdd}
+            setShowAdd={setShowAdd}
+            sessionForm={sessionForm}
+            setSessionForm={setSessionForm}
+            addSession={addSession}
+            onToggle={async (s) => {
+              const willComplete = !s.is_completed;
+              await toggleSession.mutateAsync({ id: s.id, is_completed: willComplete, plan_id: plan.id });
+              if (willComplete) toast.success("Milestone complete! 🎉");
+            }}
+            onQuickAddDate={(date) => { setSessionForm({ title: "", date, note: "" }); setShowAdd(true); }}
+          />
         </div>
       </div>
     </motion.div>
+  );
+}
+
+// ─── Sessions Section: Timeline + Week View + Burn-down + Confetti ───
+type SessionRow = { id: string; plan_id: string; title: string; date: string | null; is_completed: boolean; note?: string; created_at?: string };
+
+function SessionsSection({
+  plan, sessions, showAdd, setShowAdd, sessionForm, setSessionForm, addSession, onToggle, onQuickAddDate,
+}: {
+  plan: Plan;
+  sessions: SessionRow[];
+  showAdd: boolean;
+  setShowAdd: (v: boolean) => void;
+  sessionForm: { title: string; date: string; note: string };
+  setSessionForm: (f: { title: string; date: string; note: string }) => void;
+  addSession: () => Promise<void>;
+  onToggle: (s: SessionRow) => Promise<void>;
+  onQuickAddDate: (date: string) => void;
+}) {
+  const [view, setView] = useState<"timeline" | "week">("timeline");
+  const [weekStart, setWeekStart] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [burst, setBurst] = useState<string | null>(null);
+
+  const sorted = useMemo(() => {
+    return [...sessions].sort((a, b) => {
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return a.date.localeCompare(b.date);
+    });
+  }, [sessions]);
+
+  // Group by week
+  const weekGroups = useMemo(() => {
+    const groups = new Map<string, { label: string; weekStart: Date; items: SessionRow[] }>();
+    const undated: SessionRow[] = [];
+    sorted.forEach((s) => {
+      if (!s.date) { undated.push(s); return; }
+      const d = parseISO(s.date);
+      const ws = startOfWeek(d, { weekStartsOn: 1 });
+      const key = format(ws, "yyyy-MM-dd");
+      if (!groups.has(key)) {
+        const we = endOfWeek(d, { weekStartsOn: 1 });
+        groups.set(key, { label: `${format(ws, "MMM d")}–${format(we, "MMM d")}`, weekStart: ws, items: [] });
+      }
+      groups.get(key)!.items.push(s);
+    });
+    const arr = Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    return { groups: arr, undated };
+  }, [sorted]);
+
+  // Burn-down data
+  const burnData = useMemo(() => {
+    if (!plan.start_date || !plan.end_date) return null;
+    const start = parseISO(plan.start_date);
+    const end = parseISO(plan.end_date);
+    const days = differenceInDays(end, start);
+    if (days <= 0 || sessions.length === 0) return null;
+    const sample = Math.max(1, Math.floor(days / 12));
+    const points: { date: string; ideal: number; actual: number }[] = [];
+    const total = sessions.length;
+    const completedTimes = sessions
+      .filter((s) => s.is_completed && s.created_at)
+      .map((s) => parseISO(s.created_at!))
+      .sort((a, b) => a.getTime() - b.getTime());
+    for (let i = 0; i <= days; i += sample) {
+      const d = addDays(start, i);
+      const ideal = Math.max(0, total - (total * (i / days)));
+      const completedByThen = completedTimes.filter((t) => t <= d).length;
+      const actual = Math.max(0, total - completedByThen);
+      points.push({ date: format(d, "MMM d"), ideal: Number(ideal.toFixed(1)), actual });
+    }
+    return points;
+  }, [plan.start_date, plan.end_date, sessions]);
+
+  const handleToggle = async (s: SessionRow) => {
+    if (!s.is_completed) setBurst(s.id);
+    await onToggle(s);
+    if (!s.is_completed) setTimeout(() => setBurst(null), 700);
+  };
+
+  const jumpToToday = () => {
+    setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+    if (view === "week") return;
+    setTimeout(() => {
+      const today = format(new Date(), "yyyy-MM-dd");
+      document.getElementById(`session-day-${today}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Sessions / Milestones</p>
+          <span className="text-[10px] text-muted-foreground">· {sessions.filter((s) => s.is_completed).length}/{sessions.length}</span>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex bg-muted/40 rounded-lg p-0.5">
+            <button onClick={() => setView("timeline")} className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${view === "timeline" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+              <LayoutList className="w-3 h-3" /> Timeline
+            </button>
+            <button onClick={() => setView("week")} className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${view === "week" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+              <CalendarDays className="w-3 h-3" /> Week
+            </button>
+          </div>
+          <button onClick={jumpToToday} className="px-2.5 py-1 rounded-md bg-primary/10 text-primary text-[11px] font-semibold hover:bg-primary/20 transition-colors">Jump to today</button>
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-primary text-primary-foreground text-[11px] font-medium hover:opacity-90 transition-opacity"><Plus className="w-3 h-3" /> Add</button>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {showAdd && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+            <div className="glass-card p-4 space-y-3">
+              <input value={sessionForm.title} onChange={(e) => setSessionForm({ ...sessionForm, title: e.target.value })} placeholder="Session title" autoFocus className="w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring" />
+              <div className="flex gap-2">
+                <input type="date" value={sessionForm.date} onChange={(e) => setSessionForm({ ...sessionForm, date: e.target.value })} className="flex-1 bg-muted/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none" />
+                <button onClick={addSession} disabled={!sessionForm.title.trim()} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-40">Add</button>
+                <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-lg bg-muted text-muted-foreground text-sm font-medium">Cancel</button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {burnData && burnData.length > 1 && view === "timeline" && (
+        <div className="glass-card p-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] font-semibold text-foreground flex items-center gap-1.5"><TrendingUp className="w-3 h-3 text-primary" /> Burn-down</p>
+            <p className="text-[10px] text-muted-foreground">Ideal vs Actual remaining</p>
+          </div>
+          <div className="h-[140px] -ml-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={burnData} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="actualBurn" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} width={24} />
+                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 11 }} />
+                <Area type="monotone" dataKey="ideal" stroke="hsl(var(--muted-foreground))" strokeDasharray="4 4" strokeWidth={1.5} fill="none" />
+                <Area type="monotone" dataKey="actual" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#actualBurn)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {sessions.length === 0 && (
+        <div className="text-center py-10 bg-muted/20 rounded-xl border border-dashed border-border">
+          <Target className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+          <p className="text-sm text-muted-foreground">No sessions yet</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Add milestones to track your progress</p>
+        </div>
+      )}
+
+      {view === "timeline" && sessions.length > 0 && (
+        <div className="space-y-5">
+          {weekGroups.groups.map(([key, grp], gi) => (
+            <div key={key}>
+              <div className="flex items-center gap-2 mb-2">
+                <h4 className="text-[11px] font-bold text-foreground uppercase tracking-wider">Week {gi + 1}</h4>
+                <span className="text-[10px] text-muted-foreground">{grp.label}</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+              <TimelineList items={grp.items} burst={burst} onToggle={handleToggle} onQuickAddDate={onQuickAddDate} />
+            </div>
+          ))}
+          {weekGroups.undated.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <h4 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Undated</h4>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+              <TimelineList items={weekGroups.undated} burst={burst} onToggle={handleToggle} onQuickAddDate={onQuickAddDate} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {view === "week" && (
+        <WeekView
+          weekStart={weekStart}
+          setWeekStart={setWeekStart}
+          sessions={sorted}
+          onToggle={handleToggle}
+          onAddOnDay={(d) => onQuickAddDate(format(d, "yyyy-MM-dd"))}
+          burst={burst}
+        />
+      )}
+    </div>
+  );
+}
+
+function TimelineList({ items, burst, onToggle, onQuickAddDate }: {
+  items: SessionRow[];
+  burst: string | null;
+  onToggle: (s: SessionRow) => Promise<void>;
+  onQuickAddDate: (date: string) => void;
+}) {
+  return (
+    <div className="relative pl-1">
+      {items.map((s, idx) => {
+        const sd = s.date ? parseISO(s.date) : null;
+        const overdue = sd && isPast(sd) && !isToday(sd) && !s.is_completed;
+        const today_ = sd && isToday(sd);
+        const tomorrow_ = sd && isTomorrow(sd);
+        const future = sd && !isPast(sd) && !today_ && !s.is_completed;
+        const next = items[idx + 1];
+        const lineSolid = s.is_completed || (sd ? isPast(sd) : false);
+        const nodeBg = s.is_completed ? "bg-success border-success"
+          : today_ ? "bg-primary border-primary"
+          : tomorrow_ ? "bg-warning border-warning"
+          : overdue ? "bg-destructive border-destructive"
+          : "bg-card border-muted-foreground/30";
+        const showPulse = today_ && !s.is_completed;
+
+        let midDate: string | null = null;
+        if (next && s.date && next.date) {
+          const a = parseISO(s.date); const b = parseISO(next.date);
+          const mid = new Date((a.getTime() + b.getTime()) / 2);
+          midDate = format(mid, "yyyy-MM-dd");
+        }
+
+        return (
+          <div key={s.id} id={s.date ? `session-day-${s.date}` : undefined} className="relative">
+            {idx < items.length - 1 && (
+              <div className={`absolute left-[11px] top-7 bottom-[-12px] w-px ${lineSolid ? "bg-border" : "border-l border-dashed border-border"}`} />
+            )}
+            <motion.div initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.03 }}
+              className="flex items-start gap-3 py-2">
+              <div className="relative flex-shrink-0 mt-0.5">
+                <button
+                  onClick={() => onToggle(s)}
+                  className={`w-[22px] h-[22px] rounded-full border-2 flex items-center justify-center transition-all ${nodeBg} ${showPulse ? "animate-pulse" : ""}`}
+                  title={s.is_completed ? "Mark incomplete" : "Mark complete"}
+                >
+                  {s.is_completed && <Check className="w-3 h-3 text-success-foreground" />}
+                </button>
+                {burst === s.id && (
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    {Array.from({ length: 6 }).map((_, i) => {
+                      const angle = (Math.PI * 2 * i) / 6;
+                      const dx = Math.cos(angle) * 30;
+                      const dy = Math.sin(angle) * 30;
+                      const colors = ["bg-primary", "bg-success", "bg-warning", "bg-info", "bg-destructive", "bg-primary"];
+                      return (
+                        <motion.div key={i}
+                          initial={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+                          animate={{ opacity: 0, scale: 0.4, x: dx, y: dy, rotate: 180 }}
+                          transition={{ duration: 0.6, ease: "easeOut" }}
+                          className={`absolute w-1.5 h-1.5 ${colors[i]} rounded-sm`}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className={`flex-1 min-w-0 rounded-lg px-3 py-2 border transition-all ${
+                s.is_completed ? "opacity-60 bg-muted/20 border-border" :
+                overdue ? "bg-destructive/5 border-destructive/30" :
+                today_ ? "bg-primary/5 border-primary/30" :
+                "bg-card border-border"
+              }`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className={`text-sm font-medium ${s.is_completed ? "text-muted-foreground line-through" : "text-foreground"}`}>{s.title}</p>
+                  {!s.is_completed && today_ && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">TODAY</span>}
+                  {!s.is_completed && tomorrow_ && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-warning text-warning-foreground">TOMORROW</span>}
+                  {overdue && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-destructive text-destructive-foreground flex items-center gap-0.5"><AlertCircle className="w-2.5 h-2.5" /> OVERDUE</span>}
+                </div>
+                {s.date && <p className="text-[10px] text-muted-foreground mt-0.5">{format(parseISO(s.date), "EEE, MMM d, yyyy")}</p>}
+                {s.note && <p className="text-[11px] text-muted-foreground mt-1 italic">{s.note}</p>}
+              </div>
+            </motion.div>
+            {midDate && idx < items.length - 1 && (
+              <div className="relative h-1 group">
+                <button
+                  onClick={() => onQuickAddDate(midDate!)}
+                  className="absolute left-[5px] -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-primary/20 text-primary text-[10px] font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-primary hover:text-primary-foreground transition-all"
+                  title={`Insert session on ${midDate}`}
+                >+</button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function WeekView({
+  weekStart, setWeekStart, sessions, onToggle, onAddOnDay, burst,
+}: {
+  weekStart: Date;
+  setWeekStart: (d: Date) => void;
+  sessions: SessionRow[];
+  onToggle: (s: SessionRow) => Promise<void>;
+  onAddOnDay: (d: Date) => void;
+  burst: string | null;
+}) {
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
+  const byDate = useMemo(() => {
+    const m = new Map<string, SessionRow[]>();
+    sessions.forEach((s) => { if (s.date) { const a = m.get(s.date) || []; a.push(s); m.set(s.date, a); } });
+    return m;
+  }, [sessions]);
+
+  const weekLabel = `${format(weekStart, "MMM d")} – ${format(addDays(weekStart, 6), "MMM d, yyyy")}`;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-foreground">{weekLabel}</p>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setWeekStart(subWeeks(weekStart, 1))} className="w-7 h-7 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center">‹</button>
+          <button onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))} className="px-2 py-1 rounded-md bg-primary/10 text-primary text-[10px] font-semibold hover:bg-primary/20 transition-colors">This week</button>
+          <button onClick={() => setWeekStart(addWeeks(weekStart, 1))} className="w-7 h-7 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center">›</button>
+        </div>
+      </div>
+      <div className="grid grid-cols-7 gap-1.5">
+        {days.map((d) => {
+          const key = format(d, "yyyy-MM-dd");
+          const items = byDate.get(key) || [];
+          const today_ = isToday(d);
+          return (
+            <div key={key} className={`rounded-lg border p-2 min-h-[140px] flex flex-col gap-1.5 transition-colors ${today_ ? "bg-primary/5 border-primary/30" : "bg-card border-border hover:border-primary/20"}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[9px] font-semibold uppercase text-muted-foreground">{format(d, "EEE")}</p>
+                  <p className={`text-sm font-bold ${today_ ? "text-primary" : "text-foreground"}`}>{format(d, "d")}</p>
+                </div>
+                <button onClick={() => onAddOnDay(d)} className="w-5 h-5 rounded bg-muted/60 hover:bg-primary/20 hover:text-primary text-muted-foreground text-[11px] font-bold flex items-center justify-center transition-colors" title="Add session">+</button>
+              </div>
+              <div className="space-y-1 flex-1 overflow-auto">
+                {items.length === 0 ? (
+                  <p className="text-[10px] text-muted-foreground/60 italic">—</p>
+                ) : items.map((s) => {
+                  const sd = parseISO(s.date!);
+                  const overdue = isPast(sd) && !isToday(sd) && !s.is_completed;
+                  const cls = s.is_completed
+                    ? "bg-muted/40 text-muted-foreground line-through"
+                    : overdue
+                    ? "bg-destructive/15 text-destructive"
+                    : "bg-primary/15 text-primary";
+                  return (
+                    <button key={s.id} onClick={() => onToggle(s)}
+                      className={`w-full text-left text-[10px] font-medium px-1.5 py-1 rounded ${cls} hover:opacity-80 transition-opacity truncate`}
+                      title={s.is_completed ? "Mark incomplete" : "Mark complete"}>
+                      {s.title}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
