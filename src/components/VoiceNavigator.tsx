@@ -44,12 +44,59 @@ const PAGE_NAMES: Record<string, string> = {
 
 const EXAMPLE_COMMANDS = [
   "Go to planner",
+  "Open AI room in smart workspace",
+  "Open pinboard in smart workspace",
+  "Open AI tools in smart workspace",
+  "Open chat in SOFI assistant",
+  "Open voice in SOFI assistant",
+  "Open tools in SOFI assistant",
   "Start timer",
   "Mark task complete",
   "Read my analytics",
-  "Delete note shopping",
   "Where am I",
 ];
+
+// ===== In-page voice action routing =====
+// Tabs available inside Smart Workspace
+const WORKSPACE_TAB_MAP: Record<string, string> = {
+  "uploads": "uploads",
+  "upload": "uploads",
+  "files": "uploads",
+  "ai tools": "ai-tools",
+  "ai-tools": "ai-tools",
+  "tools": "ai-tools",
+  "generated": "generated",
+  "output": "generated",
+  "chat": "chat",
+  "room chat": "chat",
+  "recordings": "recordings",
+  "recording": "recordings",
+  "pinboard": "pinboard",
+  "pin board": "pinboard",
+  "links": "pinboard",
+};
+
+// Sections available inside SOFI Assistant
+const ASSISTANT_SECTION_MAP: Record<string, string> = {
+  "chat": "chat",
+  "voice": "voice",
+  "voice mode": "voice",
+  "focus": "focus",
+  "focus mode": "focus",
+  "timer": "focus",
+  "tools": "tools",
+  "ai tools": "tools",
+};
+
+/**
+ * Dispatch a custom window event after optional navigation so target pages can react.
+ * Pages should listen for `sofi-voice-action` and read e.detail.
+ */
+function dispatchVoiceAction(detail: Record<string, any>, delayMs = 0) {
+  const fire = () => window.dispatchEvent(new CustomEvent("sofi-voice-action", { detail }));
+  if (delayMs > 0) window.setTimeout(fire, delayMs);
+  else fire();
+}
 
 function stripMarkdown(s: string) {
   return s
