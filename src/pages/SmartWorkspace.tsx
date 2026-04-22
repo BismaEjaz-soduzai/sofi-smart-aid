@@ -366,6 +366,7 @@ interface GeneratedItem {
 
 interface ViewingFile {
   url: string | null;
+  sourceUrl?: string | null;
   name: string;
   type: string;
   previewText: string | null;
@@ -674,6 +675,7 @@ export default function SmartWorkspace() {
         const { text: previewText, quality } = await fetchFilePreview(file);
         setViewingFile({
           url: getOfficeViewerUrl(url),
+          sourceUrl: url,
           name: file.file_name,
           type,
           previewText,
@@ -689,6 +691,7 @@ export default function SmartWorkspace() {
           : { text: null, quality: "good" as const };
         setViewingFile({
           url,
+          sourceUrl: url,
           name: file.file_name,
           type,
           previewText,
@@ -1505,8 +1508,8 @@ export default function SmartWorkspace() {
                 <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{viewingFile.type}</span>
               </div>
               <div className="flex items-center gap-2">
-                <a href={viewingFile.url} download={viewingFile.name} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"><Download className="w-3.5 h-3.5" /> Download</a>
-                <a href={viewingFile.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"><Eye className="w-3.5 h-3.5" /> New Tab</a>
+                 <a href={viewingFile.sourceUrl || viewingFile.url} download={viewingFile.name} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"><Download className="w-3.5 h-3.5" /> Download</a>
+                 <a href={viewingFile.sourceUrl || viewingFile.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"><Eye className="w-3.5 h-3.5" /> New Tab</a>
                 <button onClick={() => setViewingFile(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"><X className="w-5 h-5" /></button>
               </div>
             </div>
@@ -1525,8 +1528,8 @@ export default function SmartWorkspace() {
                               : "Headings, lists, and slide/page separators are preserved."}
                         </p>
                       </div>
-                      {viewingFile.url && (
-                        <a href={viewingFile.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
+                      {(viewingFile.sourceUrl || viewingFile.url) && (
+                        <a href={viewingFile.sourceUrl || viewingFile.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
                           <ExternalLink className="w-3.5 h-3.5" /> Open in new tab
                         </a>
                       )}
