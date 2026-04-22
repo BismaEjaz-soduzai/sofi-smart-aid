@@ -13,13 +13,17 @@ interface JitsiCallPanelProps {
 const JITSI_SCRIPT_SRC = "https://meet.jit.si/external_api.js";
 const JITSI_DOMAIN = "meet.jit.si";
 
+interface JitsiApi {
+  addEventListener: (event: string, listener: (...args: unknown[]) => void) => void;
+  executeCommand: (cmd: string, ...args: unknown[]) => void;
+  dispose: () => void;
+}
+
+type JitsiCtor = new (domain: string, options: Record<string, unknown>) => JitsiApi;
+
 declare global {
   interface Window {
-    JitsiMeetExternalAPI?: new (domain: string, options: Record<string, unknown>) => {
-      addEventListener: (event: string, listener: (...args: unknown[]) => void) => void;
-      executeCommand: (cmd: string, ...args: unknown[]) => void;
-      dispose: () => void;
-    };
+    JitsiMeetExternalAPI?: JitsiCtor;
   }
 }
 
