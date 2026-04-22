@@ -462,40 +462,6 @@ RULES YOU MUST FOLLOW:
           <div className="p-4 lg:p-6 max-w-6xl mx-auto space-y-5">
             {view === "overview" && (
               <>
-                {/* Today's Focus */}
-                <motion.div variants={item} className="glass-card p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-                      <Flame className="w-4 h-4 text-warning" /> Today's Focus
-                      <span className="text-[10px] font-normal text-muted-foreground ml-1">{format(new Date(), "EEE, MMM d")}</span>
-                    </p>
-                    {todayFocus.length > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-warning/10 text-warning font-semibold">{todayFocus.length} due</span>}
-                  </div>
-                  {todayFocus.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-2">Nothing due today — great day to get ahead 🚀</p>
-                  ) : (
-                    <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-                      {todayFocus.map((s) => (
-                        <motion.div key={s.id} layout
-                          className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/50 hover:bg-muted border border-border flex-shrink-0 group cursor-pointer"
-                          onClick={() => { setSelectedPlan(s.plan!); setView("plan-detail"); }}>
-                          <span className="text-base">{s.plan?.emoji}</span>
-                          <div className="min-w-0 max-w-[180px]">
-                            <p className="text-xs font-semibold text-foreground truncate">{s.title}</p>
-                            <p className="text-[10px] text-muted-foreground truncate">{s.plan?.title}</p>
-                          </div>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); toggleTodaySession(s.id, s.plan_id); }}
-                            className="ml-1 w-6 h-6 rounded-full bg-success/10 text-success hover:bg-success hover:text-success-foreground flex items-center justify-center transition-colors flex-shrink-0"
-                            title="Mark complete">
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                        </motion.div>
-                      ))}
-                    </div>
-                  )}
-                </motion.div>
-
                 {/* Stats pills */}
                 <motion.div variants={item} className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
                   {[
@@ -510,80 +476,6 @@ RULES YOU MUST FOLLOW:
                       <span className="text-[11px] text-muted-foreground whitespace-nowrap">{s.label}</span>
                     </div>
                   ))}
-                </motion.div>
-
-                {/* Templates */}
-                <motion.div variants={item}>
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-medium text-muted-foreground">Quick Templates</p>
-                    <p className="text-[10px] text-muted-foreground">⚡ One-click AI generate · long-press to customize</p>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                    {TEMPLATES.map((t) => {
-                      const style = CATEGORY_STYLES[t.category] || CATEGORY_STYLES.study;
-                      const loading = templateLoading === t.title;
-                      return (
-                        <button
-                          key={t.title}
-                          onClick={() => handleTemplateAI(t)}
-                          onContextMenu={(e) => { e.preventDefault(); handleTemplate(t); }}
-                          disabled={loading}
-                          title="Click: AI generate · Right-click: edit form"
-                          className={`relative flex items-center gap-3 p-3 rounded-xl border ${style.border} ${style.bg} hover:shadow-md hover:scale-[1.02] active:scale-95 transition-all text-left group disabled:opacity-60`}>
-                          <span className="text-xl flex-shrink-0">{t.emoji}</span>
-                          <div className="min-w-0 flex-1">
-                            <p className={`text-xs font-semibold ${style.text} truncate`}>{t.title}</p>
-                            <p className="text-[10px] text-muted-foreground">{t.duration}</p>
-                          </div>
-                          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-info flex-shrink-0" /> : <Sparkles className="w-3 h-3 text-info opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-
-                {/* Activity chart + radial */}
-                <motion.div variants={item} className="grid lg:grid-cols-3 gap-3">
-                  <div className="glass-card p-4 lg:col-span-2">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><TrendingUp className="w-3.5 h-3.5 text-primary" /> Weekly Focus Activity</p>
-                      <span className="text-[10px] text-muted-foreground">Last 7 days</span>
-                    </div>
-                    <div className="h-[160px] -ml-2">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={activity} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
-                          <defs>
-                            <linearGradient id="planArea" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.5} />
-                              <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.05} />
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                          <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                          <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} width={28} />
-                          <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} formatter={(v: number) => [`${v} min`, "Focus"]} />
-                          <Area type="monotone" dataKey="minutes" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#planArea)" />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                  <div className="glass-card p-4 flex flex-col">
-                    <p className="text-xs font-semibold text-foreground mb-1 flex items-center gap-1.5"><Target className="w-3.5 h-3.5 text-info" /> Avg Plan Progress</p>
-                    <div className="relative flex-1 flex items-center justify-center">
-                      <div className="h-[140px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <RadialBarChart innerRadius="70%" outerRadius="100%" data={[{ name: "avg", value: avgProgress, fill: "hsl(var(--primary))" }]} startAngle={90} endAngle={-270}>
-                            <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-                            <RadialBar background={{ fill: "hsl(var(--muted))" }} dataKey="value" cornerRadius={20} />
-                          </RadialBarChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                        <p className="text-2xl font-bold text-foreground">{avgProgress}%</p>
-                        <p className="text-[10px] text-muted-foreground">{plans.length} plan{plans.length !== 1 ? "s" : ""}</p>
-                      </div>
-                    </div>
-                  </div>
                 </motion.div>
 
                 {/* Board or List View */}

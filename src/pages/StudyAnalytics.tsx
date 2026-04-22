@@ -156,11 +156,13 @@ export default function StudyAnalytics() {
   }, [tasks, notes, plans, sessions]);
 
   const intensityClass = (c: number) => {
-    if (c === 0) return "bg-muted";
-    if (c <= 1) return "bg-primary/20";
-    if (c <= 3) return "bg-primary/50";
+    if (c === 0) return "bg-muted/40 border border-border/50";
+    if (c <= 1) return "bg-primary/25";
+    if (c <= 3) return "bg-primary/55";
     return "bg-primary";
   };
+
+  const heatmapTotal = stats.heatmap.reduce((a, b) => a + b.count, 0);
 
   return (
     <motion.div
@@ -307,7 +309,12 @@ export default function StudyAnalytics() {
 
       {/* Heatmap */}
       <Card>
-        <CardHeader><CardTitle className="text-sm">Activity Heatmap · Last 28 Days</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-sm">Activity Heatmap · Last 28 Days</CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Each square is a day — darker means more tasks completed. Hover to see the date and count.
+          </p>
+        </CardHeader>
         <CardContent>
           <div className="grid grid-cols-7 gap-1.5">
             {stats.heatmap.map((cell, i) => (
@@ -318,18 +325,39 @@ export default function StudyAnalytics() {
               />
             ))}
           </div>
-          <div className="flex items-center gap-2 mt-3 text-[11px] text-muted-foreground">
-            <span>Less</span>
-            <div className="w-3 h-3 rounded-sm bg-muted" />
-            <div className="w-3 h-3 rounded-sm bg-primary/20" />
-            <div className="w-3 h-3 rounded-sm bg-primary/50" />
-            <div className="w-3 h-3 rounded-sm bg-primary" />
-            <span>More</span>
-          </div>
+          {heatmapTotal === 0 ? (
+            <p className="text-[11px] text-muted-foreground mt-3 italic">
+              No completed tasks in the last 28 days yet — finish a task to light up your first square 🟩
+            </p>
+          ) : (
+            <div className="flex items-center gap-2 mt-3 text-[11px] text-muted-foreground">
+              <span>Less</span>
+              <div className="w-3 h-3 rounded-sm bg-muted/40 border border-border/50" />
+              <div className="w-3 h-3 rounded-sm bg-primary/25" />
+              <div className="w-3 h-3 rounded-sm bg-primary/55" />
+              <div className="w-3 h-3 rounded-sm bg-primary" />
+              <span>More · {heatmapTotal} completed in 28 days</span>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <AdaptiveInsights onAskSofi={(prompt) => navigate("/assistant", { state: { prompt } })} />
+      {/* Study Insights — purpose explained */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-primary" />
+            Study Insights
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            AI-generated observations about your study patterns — strengths to keep, weak spots to fix, and
+            personalized next steps. Click any insight to ask SOFI for a deeper plan.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <AdaptiveInsights onAskSofi={(prompt) => navigate("/assistant", { state: { prompt } })} />
+        </CardContent>
+      </Card>
     </motion.div>
   );
 }
