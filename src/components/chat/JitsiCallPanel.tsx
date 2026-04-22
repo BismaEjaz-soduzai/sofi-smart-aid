@@ -47,16 +47,31 @@ function loadJitsiScript(): Promise<void> {
   if (window.JitsiMeetExternalAPI) return Promise.resolve();
   const existing = document.querySelector<HTMLScriptElement>(`script[src="${JITSI_SCRIPT_SRC}"]`);
   if (existing) {
+    if (existing.dataset.loaded === "true") return Promise.resolve();
     return new Promise((resolve, reject) => {
-      existing.addEventListener("load", () => resolve());
-      existing.addEventListener("error", () => reject(new Error("Failed to load Jitsi script")));
+      const onLoad = () => {
+        existing.dataset.loaded = "true";
+        resolve();
+      };
+      const onError = () => reject(new Error("Failed to load Jitsi script"));
+      existing.addEventListener("load", onLoad, { once: true });
+      existing.addEventListener("error", onError, { once: true });
+      window.setTimeout(() => {
+        if (window.JitsiMeetExternalAPI) {
+          existing.dataset.loaded = "true";
+          resolve();
+        }
+      }, 150);
     });
   }
   return new Promise((resolve, reject) => {
     const s = document.createElement("script");
     s.src = JITSI_SCRIPT_SRC;
     s.async = true;
-    s.onload = () => resolve();
+    s.onload = () => {
+      s.dataset.loaded = "true";
+      resolve();
+    };
     s.onerror = () => reject(new Error("Failed to load Jitsi script"));
     document.body.appendChild(s);
   });
@@ -123,6 +138,7 @@ export default function JitsiCallPanel({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const apiRef = useRef<JitsiApi | null>(null);
   const endedRef = useRef(false);
+  const initAttemptRef = useRef(0);
 
   const [phase, setPhase] = useState<"preflight" | "loading" | "ready" | "error">("preflight");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -131,6 +147,13 @@ export default function JitsiCallPanel({
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   const safeRoomName = sanitizeJitsiRoomName(callUrl || roomName, roomName || "sofi-room");
+
+  useEffect(() => {
+    endedRef.current = false;
+    initAttemptRef.current = 0;
+    setErrorMsg(null);
+    setPhase("preflight");
+  }, [safeRoomName, isVideo]);
 
   // ─── Preflight: request mic/cam permissions BEFORE creating the iframe ───
   useEffect(() => {
@@ -174,7 +197,14 @@ export default function JitsiCallPanel({
   // ─── Initialize Jitsi once preflight is complete ───
   useEffect(() => {
     if (phase !== "loading") return;
+    if (apiRef.current) {
+      setPhase("ready");
+      return;
+    }
     let cancelled = false;
+    initAttemptRef.current += 1;
+    const attempt = initAttemptRef.current;
+    let fallbackTimer: number | null = null;
 
     const handleEnd = () => {
       if (endedRef.current) return;
@@ -219,6 +249,11 @@ export default function JitsiCallPanel({
           api.addEventListener("videoConferenceJoined", () => {
             if (!cancelled) setPhase("ready");
           });
+          fallbackTimer = window.setTimeout(() => {
+            if (!cancelled && attempt === initAttemptRef.current && apiRef.current) {
+              setPhase((current) => (current === "loading" ? "ready" : current));
+            }
+          }, 7000);
         } catch (err) {
           console.error("Jitsi init error", err);
           setErrorMsg("Could not start the call. Try again.");
@@ -235,6 +270,7 @@ export default function JitsiCallPanel({
 
     return () => {
       cancelled = true;
+      if (fallbackTimer) window.clearTimeout(fallbackTimer);
       // NOTE: do NOT dispose here — we want to keep iframe alive across minimize/restore.
       // Disposal happens in handleEnd or in component unmount cleanup below.
     };

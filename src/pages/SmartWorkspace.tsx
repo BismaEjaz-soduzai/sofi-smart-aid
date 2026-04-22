@@ -366,10 +366,12 @@ interface GeneratedItem {
 
 interface ViewingFile {
   url: string | null;
+  sourceUrl?: string | null;
   name: string;
   type: string;
   previewText: string | null;
-  previewMode: "document" | "native";
+  previewMode: "document" | "native" | "office";
+  extractionQuality?: "good" | "limited" | "empty";
 }
 
 function formatSize(bytes: number) {
@@ -399,10 +401,42 @@ async function fetchFileContent(file: StudyFile): Promise<string | null> {
   }
 }
 
+async function fetchFilePreview(file: StudyFile): Promise<{ text: string | null; quality: "good" | "limited" | "empty" }> {
+  try {
+    const { data, error } = await supabase.functions.invoke("extract-file-text", {
+      body: {
+        filePath: file.file_path,
+        fileName: file.file_name,
+      },
+    });
+
+    if (error) {
+      console.error("extract-file-text error", error);
+      return { text: null, quality: "empty" };
+    }
+
+    const text = typeof data?.text === "string" && data.text.trim().length > 0 ? data.text : null;
+    const quality = data?.quality === "good" || data?.quality === "limited" || data?.quality === "empty"
+      ? data.quality
+      : text
+        ? "good"
+        : "empty";
+
+    return { text, quality };
+  } catch (error) {
+    console.error("Failed to fetch file content", error);
+    return { text: null, quality: "empty" };
+  }
+}
+
 async function getSignedUrl(file: StudyFile): Promise<string | null> {
   const { data, error } = await supabase.storage.from("study-files").createSignedUrl(file.file_path, 3600);
   if (error) return null;
   return data?.signedUrl || null;
+}
+
+function getOfficeViewerUrl(url: string) {
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
 }
 
 export default function SmartWorkspace() {
@@ -638,24 +672,31 @@ export default function SmartWorkspace() {
       const type = file.file_type.toUpperCase();
 
       if (["DOCX", "DOC", "PPT", "PPTX"].includes(type)) {
-        const previewText = await fetchFileContent(file);
+        const { text: previewText, quality } = await fetchFilePreview(file);
         setViewingFile({
-          url,
+          url: getOfficeViewerUrl(url),
+          sourceUrl: url,
           name: file.file_name,
           type,
           previewText,
-          previewMode: "document",
+          previewMode: "office",
+          extractionQuality: quality,
         });
         return;
       }
 
       if (["PDF", "TXT"].includes(type)) {
+        const { text: previewText, quality } = type === "PDF"
+          ? await fetchFilePreview(file)
+          : { text: null, quality: "good" as const };
         setViewingFile({
           url,
+          sourceUrl: url,
           name: file.file_name,
           type,
-          previewText: null,
-          previewMode: "native",
+          previewText,
+          previewMode: type === "PDF" && !!previewText ? "document" : "native",
+          extractionQuality: quality,
         });
         return;
       }
@@ -1467,26 +1508,37 @@ export default function SmartWorkspace() {
                 <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{viewingFile.type}</span>
               </div>
               <div className="flex items-center gap-2">
-                <a href={viewingFile.url} download={viewingFile.name} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"><Download className="w-3.5 h-3.5" /> Download</a>
-                <a href={viewingFile.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"><Eye className="w-3.5 h-3.5" /> New Tab</a>
+                 <a href={viewingFile.sourceUrl || viewingFile.url} download={viewingFile.name} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"><Download className="w-3.5 h-3.5" /> Download</a>
+                 <a href={viewingFile.sourceUrl || viewingFile.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"><Eye className="w-3.5 h-3.5" /> New Tab</a>
                 <button onClick={() => setViewingFile(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"><X className="w-5 h-5" /></button>
               </div>
             </div>
             <div className="flex-1 overflow-hidden">
-              {viewingFile.previewMode === "document" ? (
+              {viewingFile.previewMode === "document" || viewingFile.previewMode === "office" ? (
                 <div className="h-full overflow-y-auto p-6 bg-card">
                   <div className="max-w-4xl mx-auto space-y-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium text-foreground">In-app document preview</p>
-                        <p className="text-xs text-muted-foreground mt-1">Headings, lists, and slide/page separators are preserved.</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {viewingFile.previewMode === "office"
+                            ? "Original layout is shown in the embedded viewer. Scroll below for extracted text the AI can use."
+                            : viewingFile.extractionQuality === "limited"
+                              ? "This file was recovered in simplified text mode. If layout looks off, open the original file in a new tab."
+                              : "Headings, lists, and slide/page separators are preserved."}
+                        </p>
                       </div>
-                      {viewingFile.url && (
-                        <a href={viewingFile.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
+                      {(viewingFile.sourceUrl || viewingFile.url) && (
+                        <a href={viewingFile.sourceUrl || viewingFile.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
                           <ExternalLink className="w-3.5 h-3.5" /> Open in new tab
                         </a>
                       )}
                     </div>
+                    {viewingFile.previewMode === "office" && viewingFile.url && (
+                      <div className="rounded-xl border border-border bg-background overflow-hidden shadow-sm">
+                        <iframe src={viewingFile.url} className="w-full h-[62vh] border-0 bg-background" title={viewingFile.name} />
+                      </div>
+                    )}
                     <article className="rounded-xl border border-border bg-background p-6 shadow-sm">
                       {viewingFile.previewText ? (
                         <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:text-foreground prose-headings:font-bold prose-h1:text-2xl prose-h2:text-xl prose-h2:border-b prose-h2:border-border prose-h2:pb-2 prose-h2:mt-8 prose-h3:text-base prose-p:leading-relaxed prose-p:text-foreground prose-li:text-foreground prose-strong:text-foreground prose-hr:my-8 prose-hr:border-primary/20">
