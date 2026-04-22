@@ -439,6 +439,22 @@ export default function VoiceNavigator() {
     setActionState("idle");
   }, []);
 
+  const stopSpeaking = useCallback(() => {
+    try { window.speechSynthesis.cancel(); } catch { /* noop */ }
+    speakingRef.current = false;
+    setActionState("idle");
+  }, []);
+
+  const handleMicClick = useCallback(() => {
+    // Tap while SOFI is speaking → stop her immediately
+    if (actionState === "speaking") { stopSpeaking(); return; }
+    // Tap while listening → stop listening
+    if (actionState === "listening") { stopListening(); return; }
+    // Ignore taps mid-processing
+    if (actionState === "processing") return;
+    startListening();
+  }, [actionState, stopSpeaking, stopListening, startListening]);
+
   const mainColor =
     actionState === "listening"
       ? "bg-destructive text-destructive-foreground"
