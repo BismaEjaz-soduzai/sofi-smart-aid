@@ -370,6 +370,7 @@ interface ViewingFile {
   type: string;
   previewText: string | null;
   previewMode: "document" | "native";
+  extractionQuality?: "good" | "limited" | "empty";
 }
 
 function formatSize(bytes: number) {
@@ -396,6 +397,34 @@ async function fetchFileContent(file: StudyFile): Promise<string | null> {
   } catch (error) {
     console.error("Failed to fetch file content", error);
     return null;
+  }
+}
+
+async function fetchFilePreview(file: StudyFile): Promise<{ text: string | null; quality: "good" | "limited" | "empty" }> {
+  try {
+    const { data, error } = await supabase.functions.invoke("extract-file-text", {
+      body: {
+        filePath: file.file_path,
+        fileName: file.file_name,
+      },
+    });
+
+    if (error) {
+      console.error("extract-file-text error", error);
+      return { text: null, quality: "empty" };
+    }
+
+    const text = typeof data?.text === "string" && data.text.trim().length > 0 ? data.text : null;
+    const quality = data?.quality === "good" || data?.quality === "limited" || data?.quality === "empty"
+      ? data.quality
+      : text
+        ? "good"
+        : "empty";
+
+    return { text, quality };
+  } catch (error) {
+    console.error("Failed to fetch file content", error);
+    return { text: null, quality: "empty" };
   }
 }
 
@@ -638,24 +667,29 @@ export default function SmartWorkspace() {
       const type = file.file_type.toUpperCase();
 
       if (["DOCX", "DOC", "PPT", "PPTX"].includes(type)) {
-        const previewText = await fetchFileContent(file);
+        const { text: previewText, quality } = await fetchFilePreview(file);
         setViewingFile({
           url,
           name: file.file_name,
           type,
           previewText,
           previewMode: "document",
+          extractionQuality: quality,
         });
         return;
       }
 
       if (["PDF", "TXT"].includes(type)) {
+        const { text: previewText, quality } = type === "PDF"
+          ? await fetchFilePreview(file)
+          : { text: null, quality: "good" as const };
         setViewingFile({
           url,
           name: file.file_name,
           type,
-          previewText: null,
-          previewMode: "native",
+          previewText,
+          previewMode: type === "PDF" && !!previewText ? "document" : "native",
+          extractionQuality: quality,
         });
         return;
       }
@@ -1479,7 +1513,11 @@ export default function SmartWorkspace() {
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium text-foreground">In-app document preview</p>
-                        <p className="text-xs text-muted-foreground mt-1">Headings, lists, and slide/page separators are preserved.</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {viewingFile.extractionQuality === "limited"
+                            ? "This file was recovered in simplified text mode. If layout looks off, open the original file in a new tab."
+                            : "Headings, lists, and slide/page separators are preserved."}
+                        </p>
                       </div>
                       {viewingFile.url && (
                         <a href={viewingFile.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
