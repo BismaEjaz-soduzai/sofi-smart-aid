@@ -136,6 +136,39 @@ export type Database = {
         }
         Relationships: []
       }
+      feedback_submissions: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          message: string
+          status: string
+          subject: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          message: string
+          status?: string
+          subject?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          message?: string
+          status?: string
+          subject?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       message_reactions: {
         Row: {
           created_at: string
@@ -196,6 +229,81 @@ export type Database = {
           id?: string
           reminder_at?: string | null
           title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notification_deliveries: {
+        Row: {
+          channel: string
+          delivered_at: string
+          delivery_key: string
+          entity_id: string | null
+          entity_type: string
+          id: string
+          notification_type: string
+          user_id: string
+        }
+        Insert: {
+          channel: string
+          delivered_at?: string
+          delivery_key: string
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          notification_type: string
+          user_id: string
+        }
+        Update: {
+          channel?: string
+          delivered_at?: string
+          delivery_key?: string
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          notification_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notification_preferences: {
+        Row: {
+          browser_enabled: boolean
+          created_at: string
+          daily_reminder: boolean
+          daily_time: string
+          email_enabled: boolean
+          id: string
+          milestone_reminders: boolean
+          reminder_lead_hours: number
+          task_reminders: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          browser_enabled?: boolean
+          created_at?: string
+          daily_reminder?: boolean
+          daily_time?: string
+          email_enabled?: boolean
+          id?: string
+          milestone_reminders?: boolean
+          reminder_lead_hours?: number
+          task_reminders?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          browser_enabled?: boolean
+          created_at?: string
+          daily_reminder?: boolean
+          daily_time?: string
+          email_enabled?: boolean
+          id?: string
+          milestone_reminders?: boolean
+          reminder_lead_hours?: number
+          task_reminders?: boolean
           updated_at?: string
           user_id?: string
         }
