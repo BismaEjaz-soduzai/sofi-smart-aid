@@ -6,7 +6,9 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   Settings as SettingsIcon, Palette, Bell, Sparkles, Shield, Info,
   Sun, Moon, Monitor, Download, Trash2, LogOut, Volume2, MessageSquare,
+  Send, FileJson, FileText, Table as TableIcon, Loader2,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
