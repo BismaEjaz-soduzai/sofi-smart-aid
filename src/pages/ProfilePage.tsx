@@ -219,6 +219,8 @@ export default function ProfilePage() {
               <StatBox label="Day streak" value={streak} icon={<Flame className="w-3 h-3 text-orange-500" />} />
             </div>
           </div>
+
+          <AccountCard email={user?.email || ""} />
         </motion.aside>
 
         {/* ─────────── RIGHT ─────────── */}
@@ -229,8 +231,9 @@ export default function ProfilePage() {
           className="lg:col-span-2"
         >
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="account">Account</TabsTrigger>
               <TabsTrigger value="activity">Activity</TabsTrigger>
               <TabsTrigger value="achievements">Achievements</TabsTrigger>
             </TabsList>
