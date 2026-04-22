@@ -96,6 +96,10 @@ export default function SettingsPage() {
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem("sofi-theme") as Theme) || "system");
   const [accent, setAccent] = useState<string>(() => localStorage.getItem("sofi-accent") || ACCENTS[0].value);
   const [fontSize, setFontSize] = useState<FontSize>(() => (localStorage.getItem("sofi-font") as FontSize) || "normal");
+  const [density, setDensity] = useState<Density>(() => (localStorage.getItem("sofi-density") as Density) || "comfortable");
+  const [radius, setRadius] = useState<Radius>(() => (localStorage.getItem("sofi-radius") as Radius) || "default");
+  const [reducedMotion, setReducedMotion] = useState<boolean>(() => localStorage.getItem("sofi-reduced-motion") === "1");
+  const [highContrast, setHighContrast] = useState<boolean>(() => localStorage.getItem("sofi-high-contrast") === "1");
 
   useEffect(() => {
     applyTheme(theme);
@@ -109,42 +113,41 @@ export default function SettingsPage() {
   }, [accent]);
 
   useEffect(() => {
-    document.body.style.fontSize = FONT_PX[fontSize];
+    // Tailwind rem units anchor to <html>, so set on documentElement (not body)
+    document.documentElement.style.fontSize = FONT_PX[fontSize];
     localStorage.setItem("sofi-font", fontSize);
   }, [fontSize]);
 
-  return (
-    <PageShell title="Settings" description="Configure your SOFI experience" icon={SettingsIcon}>
-      <div className="flex flex-col md:flex-row gap-6 max-w-5xl">
-        {/* LEFT NAV */}
-        <nav className="md:w-[200px] flex-shrink-0 flex md:flex-col gap-1 overflow-x-auto md:overflow-visible">
-          {SECTIONS.map((s) => {
-            const Icon = s.icon;
-            const isActive = active === s.id;
-            return (
-              <button
-                key={s.id}
-                onClick={() => setActive(s.id)}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors whitespace-nowrap ${
-                  isActive
-                    ? "bg-primary text-primary-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                {s.label}
-              </button>
-            );
-          })}
-        </nav>
+  useEffect(() => {
+    document.documentElement.style.setProperty("--density-scale", DENSITY_PAD[density]);
+    document.documentElement.dataset.density = density;
+    localStorage.setItem("sofi-density", density);
+  }, [density]);
 
-        {/* RIGHT CONTENT */}
-        <div className="flex-1 min-w-0 space-y-6">
+  useEffect(() => {
+    document.documentElement.style.setProperty("--radius", RADIUS_REM[radius]);
+    localStorage.setItem("sofi-radius", radius);
+  }, [radius]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("reduce-motion", reducedMotion);
+    localStorage.setItem("sofi-reduced-motion", reducedMotion ? "1" : "0");
+  }, [reducedMotion]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("high-contrast", highContrast);
+    localStorage.setItem("sofi-high-contrast", highContrast ? "1" : "0");
+  }, [highContrast]);
+...
           {active === "appearance" && (
             <AppearancePanel
               theme={theme} setTheme={setTheme}
               accent={accent} setAccent={setAccent}
               fontSize={fontSize} setFontSize={setFontSize}
+              density={density} setDensity={setDensity}
+              radius={radius} setRadius={setRadius}
+              reducedMotion={reducedMotion} setReducedMotion={setReducedMotion}
+              highContrast={highContrast} setHighContrast={setHighContrast}
             />
           )}
           {active === "notifications" && <NotificationsPanel />}
