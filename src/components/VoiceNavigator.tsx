@@ -84,7 +84,7 @@ export default function VoiceNavigator() {
       }, 600);
     } else {
       setActionState("error");
-      setStatusText("I didn't catch that, please try again");
+      setStatusText(`Couldn't match "${text}". Try a destination name like Dashboard or Pinboard.`);
     }
   }, [navigate]);
 
@@ -126,15 +126,18 @@ export default function VoiceNavigator() {
       console.warn("Speech error", e?.error);
       if (e?.error === "not-allowed") {
         toast.error("Microphone permission denied");
-        setActionState("idle");
-        setStatusText("");
       } else if (e?.error === "no-speech") {
-        setActionState("idle");
-        setStatusText("");
+        // Silent — user just didn't speak
+      } else if (e?.error === "network") {
+        toast.error("Voice recognition needs internet — please type your command");
+        setStatusText("Network unavailable — type your command instead");
+        inputRef.current?.focus();
+      } else if (e?.error === "language-not-supported") {
+        toast.error(`${lang.toUpperCase()} voice unavailable — switch language or type`);
       } else {
-        setActionState("idle");
-        setStatusText("");
+        toast.error("Voice recognition failed — please type instead");
       }
+      setActionState("idle");
     };
 
     recognition.onend = () => {
