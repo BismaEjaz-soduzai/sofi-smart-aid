@@ -66,6 +66,11 @@ export default function VoiceMode({ onSwitchToText }: { onSwitchToText: () => vo
   const shouldResumeListening = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Track voice mode opens for achievements
+  useEffect(() => {
+    window.dispatchEvent(new Event("sofi-voice-opened"));
+  }, []);
+
   // Load voices
   useEffect(() => {
     const loadVoices = () => {
