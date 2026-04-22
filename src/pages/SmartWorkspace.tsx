@@ -537,7 +537,12 @@ export default function SmartWorkspace() {
 
   // Pass room filter: null = general (unassigned) files, specific ID = room files
   const { files, isLoading, uploadFile, deleteFile, moveFile } = useStudyFiles(activeRoomId === undefined ? null : activeRoomId);
-  const [tab, setTab] = useState<Tab>("uploads");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = searchParams.get("tab");
+    const valid: Tab[] = ["uploads", "ai-tools", "generated", "chat", "recordings", "pinboard"];
+    return (valid.includes(t as Tab) ? (t as Tab) : "uploads");
+  });
   const [search, setSearch] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [aiInput, setAiInput] = useState("");
