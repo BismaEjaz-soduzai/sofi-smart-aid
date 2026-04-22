@@ -189,10 +189,16 @@ export default function SettingsPage() {
 
 function AppearancePanel({
   theme, setTheme, accent, setAccent, fontSize, setFontSize,
+  density, setDensity, radius, setRadius,
+  reducedMotion, setReducedMotion, highContrast, setHighContrast,
 }: {
   theme: Theme; setTheme: (t: Theme) => void;
   accent: string; setAccent: (a: string) => void;
   fontSize: FontSize; setFontSize: (s: FontSize) => void;
+  density: Density; setDensity: (d: Density) => void;
+  radius: Radius; setRadius: (r: Radius) => void;
+  reducedMotion: boolean; setReducedMotion: (v: boolean) => void;
+  highContrast: boolean; setHighContrast: (v: boolean) => void;
 }) {
   return (
     <div className="space-y-8">
