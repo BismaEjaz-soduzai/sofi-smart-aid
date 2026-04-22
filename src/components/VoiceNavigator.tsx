@@ -84,7 +84,7 @@ export default function VoiceNavigator() {
       }, 600);
     } else {
       setActionState("error");
-      setStatusText("I didn't catch that, please try again");
+      setStatusText(`Couldn't match "${text}". Try a destination name like Dashboard or Pinboard.`);
     }
   }, [navigate]);
 
