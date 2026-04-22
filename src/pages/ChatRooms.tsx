@@ -220,6 +220,11 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   const { markAsRead } = useReadReceipts();
   const call = useCallSignal(room.id);
   const [callElapsed, setCallElapsed] = useState(0);
+  const [callMinimized, setCallMinimized] = useState(false);
+  // Reset minimize state whenever a new call starts
+  useEffect(() => {
+    if (call.activeCall) setCallMinimized(false);
+  }, [call.activeCall?.callUrl]);
   const editMessage = useEditMessage();
   const deleteMessage = useDeleteMessage();
   const { isOnline } = usePresence(room.id);
@@ -371,7 +376,8 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
               isRecording={call.isRecording}
               recordingTime={call.recordingTime}
               formatRecTime={call.formatRecTime}
-              onEnd={call.endCall}
+              onReopen={callMinimized ? () => setCallMinimized(false) : undefined}
+              onEnd={() => { setCallMinimized(false); call.endCall(); }}
               onStartRecording={() => call.startRecording(handleSaveRecording)}
               onStopRecording={call.stopRecording}
             />
@@ -383,7 +389,9 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
             callUrl={call.activeCall.callUrl}
             isVideo={call.activeCall.isVideo}
             displayName={memberMap.get(userId) || "Guest"}
-            onClose={call.endCall}
+            onLeave={() => { setCallMinimized(false); call.endCall(); }}
+            onMinimize={() => setCallMinimized(true)}
+            isMinimized={callMinimized}
           />
         )}
 
