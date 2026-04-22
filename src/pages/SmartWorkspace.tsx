@@ -414,6 +414,10 @@ export default function SmartWorkspace() {
 
   // ===== Room chat / call state =====
   const roomCall = useCallSignal(activeRoomId || "no-room");
+  const [callMinimized, setCallMinimized] = useState(false);
+  useEffect(() => {
+    if (roomCall.activeCall) setCallMinimized(false);
+  }, [roomCall.activeCall?.callUrl]);
   const { messages: roomMessages } = useRoomMessages(activeRoomId);
   const sendRoomMessage = useSendRoomMessage();
   const uploadRoomFile = useUploadRoomFile();
@@ -784,7 +788,8 @@ export default function SmartWorkspace() {
             isRecording={roomCall.isRecording}
             recordingTime={roomCall.recordingTime}
             formatRecTime={roomCall.formatRecTime}
-            onEnd={roomCall.endCall}
+            onReopen={callMinimized ? () => setCallMinimized(false) : undefined}
+            onEnd={() => { setCallMinimized(false); roomCall.endCall(); }}
             onStartRecording={() => roomCall.startRecording(async (blob, filename) => {
               await handleSaveRoomRecording(blob, filename);
               refetchRecordings();
@@ -799,7 +804,9 @@ export default function SmartWorkspace() {
           callUrl={roomCall.activeCall.callUrl}
           isVideo={roomCall.activeCall.isVideo}
           displayName={myName}
-          onClose={roomCall.endCall}
+          onLeave={() => { setCallMinimized(false); roomCall.endCall(); }}
+          onMinimize={() => setCallMinimized(true)}
+          isMinimized={callMinimized}
         />
       )}
 

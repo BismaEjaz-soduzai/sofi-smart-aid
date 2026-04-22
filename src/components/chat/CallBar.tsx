@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Circle, PhoneOff, Video, Phone, Square } from "lucide-react";
+import { Circle, PhoneOff, Video, Phone, Square, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface CallBarProps {
@@ -64,6 +64,11 @@ export default function CallBar({
       )}
 
       <div className="ml-auto flex items-center gap-1.5">
+        {onReopen && (
+          <Button size="sm" variant="default" onClick={onReopen} className="h-7 text-[11px] gap-1">
+            <Maximize2 className="w-3 h-3" /> Return to call
+          </Button>
+        )}
         {isRecording ? (
           <Button size="sm" variant="outline" onClick={onStopRecording} className="h-7 text-[11px] gap-1">
             <Square className="w-3 h-3" /> Stop Rec
