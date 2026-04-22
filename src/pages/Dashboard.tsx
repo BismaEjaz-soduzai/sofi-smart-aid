@@ -13,6 +13,7 @@ import { useRewards } from "@/hooks/useRewards";
 import { useDailyActivity } from "@/hooks/useStudySessions";
 import { format, isPast, isToday, isTomorrow, parseISO } from "date-fns";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
+import ExamCountdown from "@/components/ExamCountdown";
 
 const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const item = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } };
@@ -83,6 +84,11 @@ export default function Dashboard() {
             </div>
           </Link>
         ))}
+      </motion.div>
+
+      {/* Exam Countdown */}
+      <motion.div variants={item}>
+        <ExamCountdown />
       </motion.div>
 
       {/* Rewards + Daily Activity */}
