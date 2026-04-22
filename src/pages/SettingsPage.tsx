@@ -796,17 +796,109 @@ function AboutPanel() {
         </ul>
       </div>
 
-      <div className="space-y-2">
-        <h4 className="text-sm font-medium">Feedback</h4>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" asChild>
-            <a href="mailto:support@sofi.app?subject=Bug%20Report%20—%20SOFI">Report Bug</a>
-          </Button>
-          <Button variant="outline" asChild>
-            <a href="mailto:support@sofi.app?subject=Feature%20Suggestion%20—%20SOFI">Suggest Feature</a>
-          </Button>
+      <FeedbackForm />
+    </div>
+  );
+}
+
+function FeedbackForm() {
+  const { user } = useAuth();
+  const [category, setCategory] = useState<"bug" | "feature" | "general">("bug");
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [recent, setRecent] = useState<any[]>([]);
+
+  const loadRecent = async () => {
+    if (!user?.id) return;
+    const { data } = await supabase
+      .from("feedback_submissions")
+      .select("id, category, subject, status, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(3);
+    setRecent(data || []);
+  };
+
+  useEffect(() => { loadRecent(); }, [user?.id]);
+
+  const submit = async () => {
+    if (!user?.id) { toast.error("Please sign in"); return; }
+    if (!message.trim()) { toast.error("Add a description"); return; }
+    setSending(true);
+    const { error } = await supabase.from("feedback_submissions").insert({
+      user_id: user.id,
+      category,
+      subject: subject.trim() || `${category} report`,
+      message: message.trim(),
+    });
+    setSending(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Thanks for your feedback!");
+    setSubject(""); setMessage("");
+    loadRecent();
+  };
+
+  return (
+    <div className="space-y-3">
+      <h4 className="text-sm font-medium">Feedback</h4>
+      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <div className="flex gap-2">
+          {(["bug", "feature", "general"] as const).map((c) => (
+            <button
+              key={c}
+              onClick={() => setCategory(c)}
+              className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
+                category === c
+                  ? "border-primary bg-primary/10 text-primary font-medium"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {c === "bug" ? "🐛 Bug" : c === "feature" ? "✨ Feature" : "💬 General"}
+            </button>
+          ))}
         </div>
+        <Input
+          placeholder="Subject (optional)"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+        />
+        <Textarea
+          placeholder={
+            category === "bug"
+              ? "What went wrong? Include steps to reproduce."
+              : category === "feature"
+              ? "What would you like SOFI to do?"
+              : "Tell us what's on your mind…"
+          }
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          rows={4}
+        />
+        <Button onClick={submit} disabled={sending || !message.trim()} className="gap-2">
+          {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          Send feedback
+        </Button>
       </div>
+
+      {recent.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Your recent submissions</p>
+          <div className="space-y-1.5">
+            {recent.map((r) => (
+              <div key={r.id} className="flex items-center justify-between text-xs rounded-lg border border-border bg-card/50 px-3 py-2">
+                <div className="truncate">
+                  <span className="font-medium">{r.subject}</span>
+                  <span className="text-muted-foreground"> · {r.category}</span>
+                </div>
+                <Badge variant={r.status === "open" ? "secondary" : "default"} className="text-[10px]">
+                  {r.status}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
