@@ -2,15 +2,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   User as UserIcon, Camera, Mail, Lock, Calendar as CalendarIcon, Pencil,
-  CheckCircle2, StickyNote, Trophy, Loader2, Flame,
+  CheckCircle2, StickyNote, Trophy, Loader2, Flame, KeyRound, Save, AtSign,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useUploadAvatar } from "@/hooks/useProfile";
+import { useUploadAvatar, useProfile, useUpdateProfile } from "@/hooks/useProfile";
 import { useTasks } from "@/hooks/useTasks";
 import { useNotes } from "@/hooks/useNotes";
 import { usePlans } from "@/hooks/usePlans";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import PageShell from "@/components/PageShell";
