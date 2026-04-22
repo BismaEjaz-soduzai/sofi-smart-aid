@@ -221,6 +221,49 @@ export default function VoiceNavigator() {
     setActionState("processing");
 
     try {
+      // ===== In-page section/tab routing =====
+      // Smart Workspace tabs: "open <tab> in smart workspace" / "show pinboard in workspace"
+      const wsMatch = lower.match(/(?:open|show|go to|switch to)\s+(.+?)\s+(?:in|on|inside)\s+(?:the\s+)?(?:smart\s+)?workspace/);
+      if (wsMatch) {
+        const wanted = wsMatch[1].trim();
+        const tabKey = WORKSPACE_TAB_MAP[wanted] ||
+          Object.entries(WORKSPACE_TAB_MAP).find(([k]) => wanted.includes(k))?.[1];
+        if (tabKey) {
+          const onPage = location.pathname === "/workspace";
+          if (!onPage) navigate("/workspace");
+          dispatchVoiceAction({ target: "workspace", action: "set-tab", tab: tabKey }, onPage ? 0 : 250);
+          speak(`Opening ${wanted} in Smart Workspace`);
+          return;
+        }
+      }
+
+      // Smart Workspace: open a specific room by name — "open <name> room in workspace" or "open AI room"
+      const roomMatch = lower.match(/(?:open|join|go to|switch to)\s+(?:the\s+)?(.+?)\s+room(?:\s+(?:in|on|inside)\s+(?:the\s+)?(?:smart\s+)?workspace)?/);
+      if (roomMatch) {
+        const roomName = roomMatch[1].trim();
+        // Avoid colliding with "open chat room" → handled as nav to /chat
+        if (roomName !== "chat" && roomName !== "study") {
+          const onPage = location.pathname === "/workspace";
+          if (!onPage) navigate("/workspace");
+          dispatchVoiceAction({ target: "workspace", action: "open-room", query: roomName }, onPage ? 0 : 300);
+          speak(`Opening ${roomName} room`);
+          return;
+        }
+      }
+
+      // SOFI Assistant sections: "open chat in sofi assistant" / "open voice in sofi"
+      const sofiMatch = lower.match(/(?:open|show|go to|switch to)\s+(.+?)\s+(?:in|on|inside)\s+(?:the\s+)?(?:sofi(?:\s+assistant)?|assistant)/);
+      if (sofiMatch) {
+        const wanted = sofiMatch[1].trim();
+        const sectionKey = ASSISTANT_SECTION_MAP[wanted] ||
+          Object.entries(ASSISTANT_SECTION_MAP).find(([k]) => wanted.includes(k))?.[1];
+        if (sectionKey) {
+          navigate(`/assistant?section=${sectionKey}`);
+          speak(`Opening ${wanted} in SOFI Assistant`);
+          return;
+        }
+      }
+
       // Navigation
       const navMatch = lower.match(/^(?:go to|open|navigate to|take me to)\s+(?:the\s+)?(.+?)[?.!]?$/);
       if (navMatch) {
