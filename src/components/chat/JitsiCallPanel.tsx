@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ExternalLink, Phone, X } from "lucide-react";
+import { PhoneOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface JitsiCallPanelProps {
@@ -10,10 +10,56 @@ interface JitsiCallPanelProps {
   onClose: () => void;
 }
 
+const JITSI_SCRIPT_SRC = "https://meet.jit.si/external_api.js";
+const JITSI_DOMAIN = "meet.jit.si";
+
+interface JitsiApi {
+  addEventListener: (event: string, listener: (...args: unknown[]) => void) => void;
+  executeCommand: (cmd: string, ...args: unknown[]) => void;
+  dispose: () => void;
+}
+
+type JitsiCtor = new (domain: string, options: Record<string, unknown>) => JitsiApi;
+
+declare global {
+  interface Window {
+    JitsiMeetExternalAPI?: JitsiCtor;
+  }
+}
+
+function loadJitsiScript(): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+  if (window.JitsiMeetExternalAPI) return Promise.resolve();
+  const existing = document.querySelector<HTMLScriptElement>(`script[src="${JITSI_SCRIPT_SRC}"]`);
+  if (existing) {
+    return new Promise((resolve, reject) => {
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", () => reject(new Error("Failed to load Jitsi script")));
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = JITSI_SCRIPT_SRC;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Failed to load Jitsi script"));
+    document.body.appendChild(s);
+  });
+}
+
+function extractRoomPath(url: string, fallback: string): string {
+  try {
+    const u = new URL(url);
+    const path = u.pathname.replace(/^\//, "");
+    return path || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 /**
- * Lightweight call bar — auto-opens the Jitsi call in a new tab/window the
- * first time it mounts, then shows a small "in call" status strip with
- * Re-open / End buttons. Keeps SOFI free of embedded iframes per user request.
+ * Fullscreen embedded Jitsi call using the External API.
+ * Replaces the previous popup approach.
  */
 export default function JitsiCallPanel({
   roomName,
@@ -22,48 +68,94 @@ export default function JitsiCallPanel({
   displayName,
   onClose,
 }: JitsiCallPanelProps) {
-  const openedRef = useRef(false);
-
-  // Build URL with prejoin disabled and identity prefilled
-  const params = new URLSearchParams({ "userInfo.displayName": displayName });
-  const config = [
-    "config.prejoinPageEnabled=false",
-    "config.disableDeepLinking=true",
-    `config.startWithVideoMuted=${isVideo ? "false" : "true"}`,
-    "interfaceConfig.MOBILE_APP_PROMO=false",
-  ].join("&");
-  const launchUrl = `${callUrl}#${config}&${params.toString()}`;
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const apiRef = useRef<JitsiApi | null>(null);
+  const endedRef = useRef(false);
 
   useEffect(() => {
-    if (openedRef.current) return;
-    openedRef.current = true;
-    window.open(launchUrl, "_blank", "noopener,noreferrer");
+    let cancelled = false;
+    const room = extractRoomPath(callUrl, roomName);
+
+    const handleEnd = () => {
+      if (endedRef.current) return;
+      endedRef.current = true;
+      try { apiRef.current?.dispose(); } catch { /* noop */ }
+      apiRef.current = null;
+      onClose();
+    };
+
+    loadJitsiScript()
+      .then(() => {
+        if (cancelled || !containerRef.current || !window.JitsiMeetExternalAPI) return;
+        const api = new window.JitsiMeetExternalAPI(JITSI_DOMAIN, {
+          roomName: room,
+          parentNode: containerRef.current,
+          width: "100%",
+          height: "100%",
+          userInfo: { displayName },
+          configOverwrite: {
+            prejoinPageEnabled: false,
+            startWithAudioMuted: false,
+            startWithVideoMuted: !isVideo,
+            disableDeepLinking: true,
+            toolbarButtons: ["microphone", "camera", "desktop", "tileview", "hangup"],
+          },
+          interfaceConfigOverwrite: {
+            SHOW_JITSI_WATERMARK: false,
+            MOBILE_APP_PROMO: false,
+            HIDE_INVITE_MORE_HEADER: true,
+          },
+        });
+        apiRef.current = api;
+        api.addEventListener("videoConferenceLeft", handleEnd);
+        api.addEventListener("readyToClose", handleEnd);
+      })
+      .catch((err) => {
+        console.error("Jitsi load error", err);
+        onClose();
+      });
+
+    return () => {
+      cancelled = true;
+      try { apiRef.current?.dispose(); } catch { /* noop */ }
+      apiRef.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleLeave = () => {
+    try { apiRef.current?.executeCommand("hangup"); } catch { /* noop */ }
+    if (!endedRef.current) {
+      endedRef.current = true;
+      try { apiRef.current?.dispose(); } catch { /* noop */ }
+      apiRef.current = null;
+      onClose();
+    }
+  };
+
   return (
-    <div className="border-b border-border bg-card/60 flex-shrink-0">
-      <div className="flex items-center justify-between px-4 py-2.5">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
-          <span className="relative flex h-2 w-2 flex-shrink-0">
-            <span className="absolute inline-flex h-full w-full rounded-full bg-success opacity-75 animate-ping" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
+    <div className="fixed inset-0 z-50 bg-background flex flex-col">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card/80 backdrop-blur flex-shrink-0">
+        <div className="flex items-center gap-2 text-sm min-w-0">
+          <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75 animate-ping" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-destructive" />
           </span>
-          <Phone className="w-3.5 h-3.5 flex-shrink-0" />
-          <span className="font-medium text-foreground">In call:</span>
-          <span className="font-mono truncate">{roomName}</span>
+          <span className="font-semibold text-foreground">Live</span>
+          <span className="text-muted-foreground">·</span>
+          <span className="font-mono text-xs text-muted-foreground truncate">{roomName}</span>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <Button asChild size="sm" variant="outline" className="h-7 text-[11px] gap-1">
-            <a href={launchUrl} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="w-3 h-3" /> Re-open
-            </a>
-          </Button>
-          <Button size="sm" variant="ghost" onClick={onClose} className="h-7 w-7 p-0">
-            <X className="w-3.5 h-3.5" />
-          </Button>
-        </div>
+        <Button
+          size="sm"
+          variant="destructive"
+          onClick={handleLeave}
+          className="gap-1.5"
+        >
+          <PhoneOff className="w-4 h-4" />
+          Leave Call
+        </Button>
       </div>
+      <div ref={containerRef} className="flex-1 min-h-0 w-full bg-black" />
     </div>
   );
 }
