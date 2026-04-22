@@ -5,6 +5,7 @@ import { Eye, EyeOff, Mail, Lock, User, Sparkles, ArrowRight, Loader2, MailCheck
 import { useAuth } from "@/contexts/AuthContext";
 import AuthLayout from "@/components/AuthLayout";
 import { Field } from "@/pages/Login";
+import PasswordStrengthMeter from "@/components/PasswordStrengthMeter";
 import { toast } from "sonner";
 
 export default function SignUp() {
@@ -106,21 +107,24 @@ export default function SignUp() {
 
         <form onSubmit={handleSubmit} className="space-y-3.5">
           <Field label="Full Name" type="text" value={form.name} onChange={set("name")} placeholder="Your name" error={errors.name} icon={<User className="w-4 h-4" />} />
-          <Field label="Email" type="email" value={form.email} onChange={set("email")} placeholder="you@example.com" error={errors.email} icon={<Mail className="w-4 h-4" />} />
-          <Field
-            label="Password"
-            type={showPw ? "text" : "password"}
-            value={form.password}
-            onChange={set("password")}
-            placeholder="Min. 8 characters"
-            error={errors.password}
-            icon={<Lock className="w-4 h-4" />}
-            trailing={
-              <button type="button" onClick={() => setShowPw(!showPw)} className="text-muted-foreground hover:text-foreground transition-colors">
-                {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            }
-          />
+          <Field label="Email" type="email" value={form.email} onChange={(v) => set("email")(v.trim().toLowerCase())} placeholder="you@example.com" error={errors.email} icon={<Mail className="w-4 h-4" />} />
+          <div className="space-y-2">
+            <Field
+              label="Password"
+              type={showPw ? "text" : "password"}
+              value={form.password}
+              onChange={set("password")}
+              placeholder="Min. 8 characters"
+              error={errors.password}
+              icon={<Lock className="w-4 h-4" />}
+              trailing={
+                <button type="button" onClick={() => setShowPw(!showPw)} className="text-muted-foreground hover:text-foreground transition-colors">
+                  {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              }
+            />
+            <PasswordStrengthMeter password={form.password} />
+          </div>
           <Field
             label="Confirm Password"
             type={showConfirm ? "text" : "password"}
