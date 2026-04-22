@@ -69,7 +69,7 @@ export default function JitsiCallPanel({
   onClose,
 }: JitsiCallPanelProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const apiRef = useRef<ReturnType<NonNullable<Window["JitsiMeetExternalAPI"]>["prototype"]["dispose"]> extends void ? InstanceType<NonNullable<Window["JitsiMeetExternalAPI"]>> | null : null>(null) as React.MutableRefObject<InstanceType<NonNullable<Window["JitsiMeetExternalAPI"]>> | null>;
+  const apiRef = useRef<JitsiApi | null>(null);
   const endedRef = useRef(false);
 
   useEffect(() => {
