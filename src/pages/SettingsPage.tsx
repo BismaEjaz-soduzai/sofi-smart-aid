@@ -32,13 +32,26 @@ type AiStyle = "concise" | "balanced" | "detailed";
 const ACCENTS = [
   { name: "Teal", value: "174 62% 40%" },
   { name: "Blue", value: "210 80% 55%" },
+  { name: "Indigo", value: "234 70% 60%" },
   { name: "Purple", value: "270 60% 55%" },
+  { name: "Pink", value: "330 75% 60%" },
   { name: "Rose", value: "340 65% 55%" },
+  { name: "Red", value: "0 70% 55%" },
+  { name: "Orange", value: "24 90% 55%" },
   { name: "Amber", value: "38 92% 50%" },
+  { name: "Yellow", value: "48 95% 50%" },
+  { name: "Lime", value: "85 65% 45%" },
   { name: "Green", value: "152 60% 42%" },
+  { name: "Emerald", value: "160 70% 40%" },
+  { name: "Cyan", value: "190 75% 45%" },
+  { name: "Slate", value: "215 20% 45%" },
 ];
 
 const FONT_PX: Record<FontSize, string> = { small: "14px", normal: "16px", large: "18px" };
+type Density = "compact" | "comfortable" | "spacious";
+const DENSITY_PAD: Record<Density, string> = { compact: "0.85", comfortable: "1", spacious: "1.15" };
+type Radius = "sharp" | "default" | "round";
+const RADIUS_REM: Record<Radius, string> = { sharp: "0.25rem", default: "0.5rem", round: "1rem" };
 
 function applyTheme(theme: Theme) {
   const root = document.documentElement;
@@ -83,6 +96,10 @@ export default function SettingsPage() {
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem("sofi-theme") as Theme) || "system");
   const [accent, setAccent] = useState<string>(() => localStorage.getItem("sofi-accent") || ACCENTS[0].value);
   const [fontSize, setFontSize] = useState<FontSize>(() => (localStorage.getItem("sofi-font") as FontSize) || "normal");
+  const [density, setDensity] = useState<Density>(() => (localStorage.getItem("sofi-density") as Density) || "comfortable");
+  const [radius, setRadius] = useState<Radius>(() => (localStorage.getItem("sofi-radius") as Radius) || "default");
+  const [reducedMotion, setReducedMotion] = useState<boolean>(() => localStorage.getItem("sofi-reduced-motion") === "1");
+  const [highContrast, setHighContrast] = useState<boolean>(() => localStorage.getItem("sofi-high-contrast") === "1");
 
   useEffect(() => {
     applyTheme(theme);
@@ -96,14 +113,35 @@ export default function SettingsPage() {
   }, [accent]);
 
   useEffect(() => {
-    document.body.style.fontSize = FONT_PX[fontSize];
+    // Tailwind rem units anchor to <html>, so set on documentElement (not body)
+    document.documentElement.style.fontSize = FONT_PX[fontSize];
     localStorage.setItem("sofi-font", fontSize);
   }, [fontSize]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--density-scale", DENSITY_PAD[density]);
+    document.documentElement.dataset.density = density;
+    localStorage.setItem("sofi-density", density);
+  }, [density]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--radius", RADIUS_REM[radius]);
+    localStorage.setItem("sofi-radius", radius);
+  }, [radius]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("reduce-motion", reducedMotion);
+    localStorage.setItem("sofi-reduced-motion", reducedMotion ? "1" : "0");
+  }, [reducedMotion]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("high-contrast", highContrast);
+    localStorage.setItem("sofi-high-contrast", highContrast ? "1" : "0");
+  }, [highContrast]);
 
   return (
     <PageShell title="Settings" description="Configure your SOFI experience" icon={SettingsIcon}>
       <div className="flex flex-col md:flex-row gap-6 max-w-5xl">
-        {/* LEFT NAV */}
         <nav className="md:w-[200px] flex-shrink-0 flex md:flex-col gap-1 overflow-x-auto md:overflow-visible">
           {SECTIONS.map((s) => {
             const Icon = s.icon;
@@ -125,13 +163,16 @@ export default function SettingsPage() {
           })}
         </nav>
 
-        {/* RIGHT CONTENT */}
         <div className="flex-1 min-w-0 space-y-6">
           {active === "appearance" && (
             <AppearancePanel
               theme={theme} setTheme={setTheme}
               accent={accent} setAccent={setAccent}
               fontSize={fontSize} setFontSize={setFontSize}
+              density={density} setDensity={setDensity}
+              radius={radius} setRadius={setRadius}
+              reducedMotion={reducedMotion} setReducedMotion={setReducedMotion}
+              highContrast={highContrast} setHighContrast={setHighContrast}
             />
           )}
           {active === "notifications" && <NotificationsPanel />}
@@ -148,10 +189,16 @@ export default function SettingsPage() {
 
 function AppearancePanel({
   theme, setTheme, accent, setAccent, fontSize, setFontSize,
+  density, setDensity, radius, setRadius,
+  reducedMotion, setReducedMotion, highContrast, setHighContrast,
 }: {
   theme: Theme; setTheme: (t: Theme) => void;
   accent: string; setAccent: (a: string) => void;
   fontSize: FontSize; setFontSize: (s: FontSize) => void;
+  density: Density; setDensity: (d: Density) => void;
+  radius: Radius; setRadius: (r: Radius) => void;
+  reducedMotion: boolean; setReducedMotion: (v: boolean) => void;
+  highContrast: boolean; setHighContrast: (v: boolean) => void;
 }) {
   return (
     <div className="space-y-8">
@@ -230,6 +277,71 @@ function AppearancePanel({
               {s.charAt(0).toUpperCase() + s.slice(1)}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Density */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium">Interface density</Label>
+        <div className="inline-flex rounded-lg border border-border p-1 bg-muted/30">
+          {(["compact", "comfortable", "spacious"] as Density[]).map((d) => (
+            <button
+              key={d}
+              onClick={() => setDensity(d)}
+              className={`px-4 py-1.5 rounded-md text-sm transition-colors ${
+                density === d ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {d.charAt(0).toUpperCase() + d.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Corner radius */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium">Corner style</Label>
+        <div className="inline-flex rounded-lg border border-border p-1 bg-muted/30">
+          {(["sharp", "default", "round"] as Radius[]).map((r) => (
+            <button
+              key={r}
+              onClick={() => setRadius(r)}
+              className={`px-4 py-1.5 rounded-md text-sm transition-colors ${
+                radius === r ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {r.charAt(0).toUpperCase() + r.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Accessibility toggles */}
+      <div className="space-y-3 rounded-xl border border-border bg-card divide-y divide-border">
+        <Row title="Reduce motion" desc="Minimize animations and transitions">
+          <Switch checked={reducedMotion} onCheckedChange={setReducedMotion} />
+        </Row>
+        <Row title="High contrast" desc="Stronger borders and text contrast">
+          <Switch checked={highContrast} onCheckedChange={setHighContrast} />
+        </Row>
+      </div>
+
+      {/* Live preview */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium">Preview</Label>
+        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-base font-semibold text-foreground">Sample card</div>
+              <div className="text-sm text-muted-foreground">This updates as you change settings.</div>
+            </div>
+            <Button size="sm">Action</Button>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <Badge>Primary</Badge>
+            <Badge variant="secondary">Secondary</Badge>
+            <Badge variant="outline">Outline</Badge>
+          </div>
         </div>
       </div>
     </div>
