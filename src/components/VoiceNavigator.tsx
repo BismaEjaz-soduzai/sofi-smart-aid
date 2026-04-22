@@ -532,11 +532,19 @@ export default function VoiceNavigator() {
             </>
           )}
           <button
-            onClick={actionState === "listening" ? stopListening : startListening}
-            disabled={actionState === "processing" || actionState === "speaking"}
+            onClick={handleMicClick}
+            disabled={actionState === "processing"}
             className={`relative w-14 h-14 rounded-full flex items-center justify-center shadow-xl transition-colors disabled:opacity-90 ${mainColor}`}
-            aria-label={actionState === "listening" ? "Stop listening" : "Start voice command"}
-            title={actionState === "listening" ? "Listening — click to stop" : "Click and speak"}
+            aria-label={
+              actionState === "listening" ? "Stop listening"
+              : actionState === "speaking" ? "Stop speaking"
+              : "Start voice command"
+            }
+            title={
+              actionState === "listening" ? "Listening — tap to stop"
+              : actionState === "speaking" ? "Tap to stop SOFI"
+              : "Tap and speak"
+            }
           >
             <Icon className={`w-6 h-6 ${actionState === "processing" ? "animate-spin" : ""}`} />
           </button>
