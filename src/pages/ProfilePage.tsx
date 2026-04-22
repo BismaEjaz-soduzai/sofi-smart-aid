@@ -249,6 +249,10 @@ export default function ProfilePage() {
               />
             </TabsContent>
 
+            <TabsContent value="account" className="mt-4">
+              <AccountTab email={user?.email || ""} />
+            </TabsContent>
+
             <TabsContent value="activity" className="mt-4">
               <ActivityTab tasks={completedTasks} notes={notes} plans={plans} />
             </TabsContent>
