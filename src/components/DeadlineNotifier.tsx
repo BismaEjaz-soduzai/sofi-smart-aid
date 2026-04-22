@@ -4,13 +4,35 @@ import { usePlans } from "@/hooks/usePlans";
 import { isPast, isToday, isTomorrow, parseISO, differenceInHours } from "date-fns";
 import { toast } from "sonner";
 
+interface NotifPrefs {
+  taskReminders?: boolean;
+  taskDueReminders?: boolean;
+  milestoneReminders?: boolean;
+  browserEnabled?: boolean;
+  browserNotifications?: boolean;
+}
+
+function readPrefs(): NotifPrefs {
+  try {
+    const raw = localStorage.getItem("sofi-notif");
+    return raw ? (JSON.parse(raw) as NotifPrefs) : {};
+  } catch { return {}; }
+}
+
+function browserNotifAllowed(prefs: NotifPrefs) {
+  const enabled = prefs.browserNotifications !== false && prefs.browserEnabled !== false;
+  return (
+    enabled &&
+    typeof Notification !== "undefined" &&
+    Notification.permission === "granted"
+  );
+}
+
 export function DeadlineNotifier() {
   const { data: tasks } = useTasks();
   const { data: plans } = usePlans();
   const notifiedRef = useRef<Set<string>>(new Set());
 
-  // Request browser notification permission on first user interaction
-  // (browsers block permission prompts that fire on initial mount without a gesture)
   useEffect(() => {
     if (!("Notification" in window)) return;
     if (Notification.permission !== "default") return;
@@ -30,6 +52,8 @@ export function DeadlineNotifier() {
 
   useEffect(() => {
     if (!tasks) return;
+    const prefs = readPrefs();
+    if (prefs.taskReminders === false || prefs.taskDueReminders === false) return;
 
     const now = new Date();
 
@@ -59,14 +83,11 @@ export function DeadlineNotifier() {
 
       if (message) {
         notifiedRef.current.add(key);
-
-        // In-app toast
         if (urgency === "error") toast.error(message, { duration: 6000 });
         else if (urgency === "warning") toast.warning(message, { duration: 5000 });
         else toast.info(message, { duration: 4000 });
 
-        // Browser notification
-        if ("Notification" in window && Notification.permission === "granted") {
+        if (browserNotifAllowed(prefs)) {
           new Notification("SOFI - Task Reminder", {
             body: message.replace(/[⚠️📌📋⏰]\s?/g, ""),
             icon: "/placeholder.svg",
@@ -77,11 +98,12 @@ export function DeadlineNotifier() {
     });
   }, [tasks]);
 
-  // Plan deadline notifications  
   useEffect(() => {
     if (!plans) return;
-    const now = new Date();
+    const prefs = readPrefs();
+    if (prefs.milestoneReminders === false) return;
 
+    const now = new Date();
     plans.filter(p => p.status === "active" && p.end_date).forEach(p => {
       const key = `plan-${p.id}`;
       if (notifiedRef.current.has(key)) return;
@@ -92,7 +114,7 @@ export function DeadlineNotifier() {
       if (hoursUntil <= 24 && hoursUntil > 0) {
         notifiedRef.current.add(key);
         toast.warning(`📅 Plan "${p.title}" ends tomorrow!`, { duration: 5000 });
-        if ("Notification" in window && Notification.permission === "granted") {
+        if (browserNotifAllowed(prefs)) {
           new Notification("SOFI - Plan Reminder", {
             body: `"${p.title}" ends soon!`,
             icon: "/placeholder.svg",

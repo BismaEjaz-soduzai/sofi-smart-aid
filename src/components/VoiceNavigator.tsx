@@ -85,6 +85,9 @@ export default function VoiceNavigator() {
   usePlans();
   const timer = useFocusTimer();
 
+  // Hide on /assistant — that page has its own voice interface
+  if (location.pathname === "/assistant") return null;
+
   const [actionState, setActionState] = useState<ActionState>("idle");
   const [transcript, setTranscript] = useState("");
   const [lastAction, setLastAction] = useState("");
