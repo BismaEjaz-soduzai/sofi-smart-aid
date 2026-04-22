@@ -63,7 +63,7 @@ export default function ForgotPassword() {
                 label="Email"
                 type="email"
                 value={email}
-                onChange={setEmail}
+                onChange={(v) => setEmail(v.trim().toLowerCase())}
                 placeholder="you@example.com"
                 error={error}
                 icon={<Mail className="w-4 h-4" />}

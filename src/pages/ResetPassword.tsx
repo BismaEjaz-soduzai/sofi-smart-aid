@@ -5,6 +5,7 @@ import { Lock, Sparkles, ArrowRight, Loader2, CheckCircle2 } from "lucide-react"
 import { supabase } from "@/integrations/supabase/client";
 import AuthLayout from "@/components/AuthLayout";
 import { Field } from "@/pages/Login";
+import PasswordStrengthMeter from "@/components/PasswordStrengthMeter";
 import { toast } from "sonner";
 
 export default function ResetPassword() {
@@ -132,7 +133,10 @@ export default function ResetPassword() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              <Field label="New Password" type="password" value={password} onChange={setPassword} placeholder="Min. 8 characters" error={errors.password} icon={<Lock className="w-4 h-4" />} />
+              <div className="space-y-2">
+                <Field label="New Password" type="password" value={password} onChange={setPassword} placeholder="Min. 8 characters" error={errors.password} icon={<Lock className="w-4 h-4" />} />
+                <PasswordStrengthMeter password={password} />
+              </div>
               <Field label="Confirm Password" type="password" value={confirm} onChange={setConfirm} placeholder="Re-enter password" error={errors.confirm} icon={<Lock className="w-4 h-4" />} />
 
               <button

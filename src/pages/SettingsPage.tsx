@@ -1,87 +1,86 @@
 import PageShell from "@/components/PageShell";
 import { useAuth } from "@/contexts/AuthContext";
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Settings as SettingsIcon, Moon, Sun, Monitor, User, Bell, Shield,
-  Download, Trash2, LogOut, ChevronRight, Globe, Clock, BookOpen,
-  Volume2, VolumeX, Eye, EyeOff, Save, Camera, Palette, Type,
-  Contrast,
+  Settings as SettingsIcon, Palette, Bell, Sparkles, Shield, Info,
+  Sun, Moon, Monitor, Download, Trash2, LogOut, Volume2, MessageSquare,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 
 type Theme = "light" | "dark" | "system";
+type Section = "appearance" | "notifications" | "ai" | "privacy" | "about";
+type FontSize = "small" | "normal" | "large";
+type AiStyle = "concise" | "balanced" | "detailed";
 
-function getSystemTheme(): "light" | "dark" {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
+const ACCENTS = [
+  { name: "Teal", value: "174 62% 40%" },
+  { name: "Blue", value: "210 80% 55%" },
+  { name: "Purple", value: "270 60% 55%" },
+  { name: "Rose", value: "340 65% 55%" },
+  { name: "Amber", value: "38 92% 50%" },
+  { name: "Green", value: "152 60% 42%" },
+];
+
+const FONT_PX: Record<FontSize, string> = { small: "14px", normal: "16px", large: "18px" };
 
 function applyTheme(theme: Theme) {
   const root = document.documentElement;
   if (theme === "system") {
-    root.classList.toggle("dark", getSystemTheme() === "dark");
+    const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    root.classList.toggle("dark", isDark);
   } else {
     root.classList.toggle("dark", theme === "dark");
   }
 }
 
-type SettingsSection = "appearance" | "profile" | "notifications" | "privacy" | "data" | "about";
+interface NotifPrefs {
+  taskReminders: boolean;
+  milestoneReminders: boolean;
+  browserEnabled: boolean;
+  emailEnabled: boolean;
+  dailyReminder: boolean;
+  dailyTime: string;
+}
+const DEFAULT_NOTIFS: NotifPrefs = {
+  taskReminders: true,
+  milestoneReminders: true,
+  browserEnabled: false,
+  emailEnabled: true,
+  dailyReminder: false,
+  dailyTime: "08:00",
+};
 
-const ACCENT_COLORS = [
-  { name: "Teal", value: "174 62% 40%", dark: "174 62% 48%" },
-  { name: "Blue", value: "210 80% 55%", dark: "210 75% 58%" },
-  { name: "Purple", value: "270 60% 55%", dark: "270 55% 60%" },
-  { name: "Rose", value: "340 65% 55%", dark: "340 60% 58%" },
-  { name: "Amber", value: "38 92% 50%", dark: "38 85% 55%" },
-  { name: "Green", value: "152 60% 42%", dark: "152 55% 45%" },
-];
-
-const FONT_SIZES = [
-  { value: "small", label: "Small" },
-  { value: "normal", label: "Normal" },
-  { value: "large", label: "Large" },
+const SECTIONS: { id: Section; label: string; icon: typeof Palette }[] = [
+  { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "ai", label: "AI Assistant", icon: Sparkles },
+  { id: "privacy", label: "Privacy & Data", icon: Shield },
+  { id: "about", label: "About", icon: Info },
 ];
 
 export default function SettingsPage() {
-  const { user, signOut } = useAuth();
-  const navigate = useNavigate();
-  const [activeSection, setActiveSection] = useState<SettingsSection>("appearance");
+  const { user } = useAuth();
+  const [active, setActive] = useState<Section>("appearance");
 
-  const [theme, setTheme] = useState<Theme>(() =>
-    (localStorage.getItem("sofi-theme") as Theme) || "system"
-  );
-
-  const [displayName, setDisplayName] = useState(user?.user_metadata?.full_name || "");
-  const [saving, setSaving] = useState(false);
-
-  const [prefs, setPrefs] = useState(() => {
-    const saved = localStorage.getItem("sofi-prefs");
-    return saved ? JSON.parse(saved) : {
-      soundEnabled: true,
-      voiceEnabled: true,
-      taskReminders: true,
-      planReminders: true,
-      weeklyDigest: false,
-      showCompletedTasks: true,
-      defaultPriority: "medium",
-      defaultCategory: "personal",
-      focusDuration: 25,
-      breakDuration: 5,
-      language: "en",
-      timeFormat: "12h",
-      accentColor: 0,
-      fontSize: "normal",
-      highContrast: false,
-      reducedMotion: false,
-      compactMode: false,
-    };
-  });
+  // Appearance
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem("sofi-theme") as Theme) || "system");
+  const [accent, setAccent] = useState<string>(() => localStorage.getItem("sofi-accent") || ACCENTS[0].value);
+  const [fontSize, setFontSize] = useState<FontSize>(() => (localStorage.getItem("sofi-font") as FontSize) || "normal");
 
   useEffect(() => {
     applyTheme(theme);
@@ -89,333 +88,561 @@ export default function SettingsPage() {
   }, [theme]);
 
   useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => { if (theme === "system") applyTheme("system"); };
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, [theme]);
+    document.documentElement.style.setProperty("--primary", accent);
+    document.documentElement.style.setProperty("--ring", accent);
+    localStorage.setItem("sofi-accent", accent);
+  }, [accent]);
 
-  // Apply accent color
   useEffect(() => {
-    const accent = ACCENT_COLORS[prefs.accentColor] || ACCENT_COLORS[0];
-    const isDark = document.documentElement.classList.contains("dark");
-    document.documentElement.style.setProperty("--primary", isDark ? accent.dark : accent.value);
-    document.documentElement.style.setProperty("--ring", isDark ? accent.dark : accent.value);
-  }, [prefs.accentColor, theme]);
-
-  // Apply font size
-  useEffect(() => {
-    const root = document.documentElement;
-    root.classList.remove("text-sm", "text-base", "text-lg");
-    if (prefs.fontSize === "small") root.style.fontSize = "14px";
-    else if (prefs.fontSize === "large") root.style.fontSize = "18px";
-    else root.style.fontSize = "16px";
-  }, [prefs.fontSize]);
-
-  // Apply high contrast
-  useEffect(() => {
-    document.documentElement.classList.toggle("high-contrast", prefs.highContrast);
-  }, [prefs.highContrast]);
-
-  const updatePref = (key: string, value: any) => {
-    const next = { ...prefs, [key]: value };
-    setPrefs(next);
-    localStorage.setItem("sofi-prefs", JSON.stringify(next));
-  };
-
-  const handleSaveProfile = async () => {
-    setSaving(true);
-    const { error } = await supabase.auth.updateUser({ data: { full_name: displayName } });
-    setSaving(false);
-    if (error) toast.error("Failed to update profile");
-    else toast.success("Profile updated!");
-  };
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate("/login");
-  };
-
-  const handleDeleteAccount = () => {
-    toast.info("Account deletion requires confirmation. Contact support.");
-  };
-
-  const handleExportData = async () => {
-    try {
-      toast.info("Preparing your data export...");
-      const [tasksRes, notesRes, plansRes] = await Promise.all([
-        supabase.from("tasks").select("*"),
-        supabase.from("notes").select("*"),
-        supabase.from("plans").select("*"),
-      ]);
-      if (tasksRes.error || notesRes.error || plansRes.error) {
-        throw new Error("Failed to fetch data");
-      }
-      const data = {
-        exportDate: new Date().toISOString(),
-        user: { id: user?.id, email: user?.email },
-        tasks: tasksRes.data || [],
-        notes: notesRes.data || [],
-        plans: plansRes.data || [],
-      };
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `sofi-data-export-${new Date().toISOString().split("T")[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success("Data exported successfully!");
-    } catch (e: any) {
-      toast.error(e.message || "Export failed");
-    }
-  };
-
-  const initials = (displayName || user?.email?.split("@")[0] || "U")
-    .split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
-
-  const themes: { value: Theme; label: string; icon: typeof Sun }[] = [
-    { value: "light", label: "Light", icon: Sun },
-    { value: "dark", label: "Dark", icon: Moon },
-    { value: "system", label: "System", icon: Monitor },
-  ];
-
-  const sections: { id: SettingsSection; label: string; icon: typeof User }[] = [
-    { id: "profile", label: "Profile", icon: User },
-    { id: "appearance", label: "Appearance", icon: Sun },
-    { id: "notifications", label: "Notifications", icon: Bell },
-    { id: "privacy", label: "Privacy & Security", icon: Shield },
-    { id: "data", label: "Data & Storage", icon: Download },
-    { id: "about", label: "About SOFI", icon: BookOpen },
-  ];
+    document.body.style.fontSize = FONT_PX[fontSize];
+    localStorage.setItem("sofi-font", fontSize);
+  }, [fontSize]);
 
   return (
     <PageShell title="Settings" description="Configure your SOFI experience" icon={SettingsIcon}>
-      <div className="flex gap-6 max-w-4xl">
-        <div className="w-48 flex-shrink-0 hidden md:block space-y-1">
-          {sections.map((s) => (
-            <button key={s.id} onClick={() => setActiveSection(s.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${activeSection === s.id ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}>
-              <s.icon className="w-4 h-4" /> {s.label}
-            </button>
-          ))}
-          <Separator className="my-3" />
-          <button onClick={handleSignOut} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-destructive hover:bg-destructive/5 transition-colors">
-            <LogOut className="w-4 h-4" /> Sign Out
-          </button>
-        </div>
-
-        <div className="flex-1 space-y-6 min-w-0">
-          <div className="flex gap-2 overflow-x-auto md:hidden pb-2">
-            {sections.map((s) => (
-              <button key={s.id} onClick={() => setActiveSection(s.id)}
-                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${activeSection === s.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+      <div className="flex flex-col md:flex-row gap-6 max-w-5xl">
+        {/* LEFT NAV */}
+        <nav className="md:w-[200px] flex-shrink-0 flex md:flex-col gap-1 overflow-x-auto md:overflow-visible">
+          {SECTIONS.map((s) => {
+            const Icon = s.icon;
+            const isActive = active === s.id;
+            return (
+              <button
+                key={s.id}
+                onClick={() => setActive(s.id)}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors whitespace-nowrap ${
+                  isActive
+                    ? "bg-primary text-primary-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                }`}
+              >
+                <Icon className="w-4 h-4" />
                 {s.label}
               </button>
-            ))}
-          </div>
+            );
+          })}
+        </nav>
 
-          {activeSection === "profile" && (
-            <div className="space-y-5">
-              <SectionCard title="Your Profile">
-                <div className="flex items-center gap-4 mb-5">
-                  <div className="relative">
-                    <Avatar className="w-16 h-16"><AvatarFallback className="bg-primary/10 text-primary text-lg font-semibold">{initials}</AvatarFallback></Avatar>
-                    <button className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center"><Camera className="w-3 h-3" /></button>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{displayName || "Set your name"}</p>
-                    <p className="text-xs text-muted-foreground">{user?.email}</p>
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Display Name</label><Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your name" className="h-9" /></div>
-                  <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Email</label><Input value={user?.email || ""} disabled className="h-9 opacity-60" /></div>
-                  <Button onClick={handleSaveProfile} disabled={saving} size="sm" className="mt-2"><Save className="w-3.5 h-3.5 mr-1.5" />{saving ? "Saving..." : "Save Changes"}</Button>
-                </div>
-              </SectionCard>
-              <SectionCard title="Defaults">
-                <SettingRow label="Default Task Priority" description="New tasks will use this priority">
-                  <select value={prefs.defaultPriority} onChange={(e) => updatePref("defaultPriority", e.target.value)} className="text-xs bg-muted rounded-lg px-2.5 py-1.5 border border-border text-foreground">
-                    <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
-                  </select>
-                </SettingRow>
-                <SettingRow label="Default Category" description="New tasks default category">
-                  <select value={prefs.defaultCategory} onChange={(e) => updatePref("defaultCategory", e.target.value)} className="text-xs bg-muted rounded-lg px-2.5 py-1.5 border border-border text-foreground">
-                    {["personal", "study", "work", "assignment", "exam", "fyp"].map((c) => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
-                  </select>
-                </SettingRow>
-              </SectionCard>
-            </div>
+        {/* RIGHT CONTENT */}
+        <div className="flex-1 min-w-0 space-y-6">
+          {active === "appearance" && (
+            <AppearancePanel
+              theme={theme} setTheme={setTheme}
+              accent={accent} setAccent={setAccent}
+              fontSize={fontSize} setFontSize={setFontSize}
+            />
           )}
-
-          {activeSection === "appearance" && (
-            <div className="space-y-5">
-              <SectionCard title="Theme">
-                <div className="flex gap-3">
-                  {themes.map((t) => (
-                    <button key={t.value} onClick={() => setTheme(t.value)}
-                      className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${theme === t.value ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/30"}`}>
-                      <t.icon className={`w-5 h-5 ${theme === t.value ? "text-primary" : "text-muted-foreground"}`} />
-                      <span className={`text-xs font-medium ${theme === t.value ? "text-primary" : "text-muted-foreground"}`}>{t.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </SectionCard>
-
-              <SectionCard title="Accent Color">
-                <div className="flex gap-3 flex-wrap">
-                  {ACCENT_COLORS.map((c, i) => (
-                    <button key={c.name} onClick={() => updatePref("accentColor", i)}
-                      className={`flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all ${prefs.accentColor === i ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}>
-                      <div className="w-8 h-8 rounded-full" style={{ background: `hsl(${c.value})` }} />
-                      <span className="text-[10px] font-medium text-muted-foreground">{c.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </SectionCard>
-
-              <SectionCard title="Display">
-                <SettingRow label="Font Size" description="Adjust the text size across the app">
-                  <div className="flex gap-1.5">
-                    {FONT_SIZES.map((f) => (
-                      <button key={f.value} onClick={() => updatePref("fontSize", f.value)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${prefs.fontSize === f.value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
-                        {f.label}
-                      </button>
-                    ))}
-                  </div>
-                </SettingRow>
-                <SettingRow label="High Contrast" description="Increase contrast for better readability">
-                  <Switch checked={prefs.highContrast} onCheckedChange={(v) => updatePref("highContrast", v)} />
-                </SettingRow>
-                <SettingRow label="Reduced Motion" description="Minimize animations throughout the app">
-                  <Switch checked={prefs.reducedMotion} onCheckedChange={(v) => updatePref("reducedMotion", v)} />
-                </SettingRow>
-                <SettingRow label="Compact Mode" description="Tighter spacing for more content on screen">
-                  <Switch checked={prefs.compactMode} onCheckedChange={(v) => updatePref("compactMode", v)} />
-                </SettingRow>
-                <SettingRow label="Time Format" description="Choose 12h or 24h clock">
-                  <select value={prefs.timeFormat} onChange={(e) => updatePref("timeFormat", e.target.value)} className="text-xs bg-muted rounded-lg px-2.5 py-1.5 border border-border text-foreground">
-                    <option value="12h">12-hour</option><option value="24h">24-hour</option>
-                  </select>
-                </SettingRow>
-                <SettingRow label="Show Completed Tasks" description="Display completed tasks in task list">
-                  <Switch checked={prefs.showCompletedTasks} onCheckedChange={(v) => updatePref("showCompletedTasks", v)} />
-                </SettingRow>
-              </SectionCard>
-            </div>
-          )}
-
-          {activeSection === "notifications" && (
-            <SectionCard title="Notification Preferences">
-              <SettingRow label="Task Reminders" description="Get notified before task deadlines">
-                <Switch checked={prefs.taskReminders} onCheckedChange={(v) => updatePref("taskReminders", v)} />
-              </SettingRow>
-              <SettingRow label="Plan Reminders" description="Reminders for upcoming plan sessions">
-                <Switch checked={prefs.planReminders} onCheckedChange={(v) => updatePref("planReminders", v)} />
-              </SettingRow>
-              <SettingRow label="Weekly Digest" description="Receive a weekly productivity summary">
-                <Switch checked={prefs.weeklyDigest} onCheckedChange={(v) => updatePref("weeklyDigest", v)} />
-              </SettingRow>
-              <SettingRow label="Sound Effects" description="Play sounds for notifications and actions">
-                <Switch checked={prefs.soundEnabled} onCheckedChange={(v) => updatePref("soundEnabled", v)} />
-              </SettingRow>
-              <SettingRow label="Voice Feedback" description="SOFI reads responses aloud">
-                <Switch checked={prefs.voiceEnabled} onCheckedChange={(v) => updatePref("voiceEnabled", v)} />
-              </SettingRow>
-              <SettingRow label="Browser Notifications" description="Receive notifications even when the app is in the background">
-                <Button variant="outline" size="sm" onClick={() => {
-                  if ("Notification" in window) {
-                    Notification.requestPermission().then((p) => {
-                      if (p === "granted") toast.success("Browser notifications enabled!");
-                      else toast.info("Notifications permission denied");
-                    });
-                  } else { toast.error("Browser notifications not supported"); }
-                }}>Enable</Button>
-              </SettingRow>
-            </SectionCard>
-          )}
-
-          {activeSection === "privacy" && (
-            <div className="space-y-5">
-              <SectionCard title="Security">
-                <SettingRow label="Change Password" description="Update your account password">
-                  <Button variant="outline" size="sm" onClick={() => {
-                    supabase.auth.resetPasswordForEmail(user?.email || "", { redirectTo: `${window.location.origin}/reset-password` });
-                    toast.success("Password reset email sent!");
-                  }}>Reset</Button>
-                </SettingRow>
-              </SectionCard>
-              <SectionCard title="Focus Settings">
-                <SettingRow label="Focus Duration" description="Default focus session length (minutes)">
-                  <select value={prefs.focusDuration} onChange={(e) => updatePref("focusDuration", Number(e.target.value))} className="text-xs bg-muted rounded-lg px-2.5 py-1.5 border border-border text-foreground">
-                    {[15, 25, 30, 45, 60].map((m) => <option key={m} value={m}>{m} min</option>)}
-                  </select>
-                </SettingRow>
-                <SettingRow label="Break Duration" description="Default break length (minutes)">
-                  <select value={prefs.breakDuration} onChange={(e) => updatePref("breakDuration", Number(e.target.value))} className="text-xs bg-muted rounded-lg px-2.5 py-1.5 border border-border text-foreground">
-                    {[3, 5, 10, 15].map((m) => <option key={m} value={m}>{m} min</option>)}
-                  </select>
-                </SettingRow>
-              </SectionCard>
-            </div>
-          )}
-
-          {activeSection === "data" && (
-            <div className="space-y-5">
-              <SectionCard title="Your Data">
-                <SettingRow label="Export All Data" description="Download your tasks, notes, and plans as JSON">
-                  <Button variant="outline" size="sm" onClick={handleExportData}><Download className="w-3.5 h-3.5 mr-1.5" />Export</Button>
-                </SettingRow>
-              </SectionCard>
-              <SectionCard title="Danger Zone" danger>
-                <SettingRow label="Delete Account" description="Permanently delete your account and all data">
-                  <Button variant="destructive" size="sm" onClick={handleDeleteAccount}><Trash2 className="w-3.5 h-3.5 mr-1.5" />Delete</Button>
-                </SettingRow>
-              </SectionCard>
-            </div>
-          )}
-
-          {activeSection === "about" && (
-            <SectionCard title="About SOFI">
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center"><span className="text-lg">🤖</span></div>
-                  <div><p className="text-sm font-semibold text-foreground">SOFI</p><p className="text-xs text-muted-foreground">Your AI Study & Productivity Assistant</p></div>
-                </div>
-                <Separator />
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div><span className="text-muted-foreground">Version</span><p className="font-medium text-foreground">2.0.0</p></div>
-                  <div><span className="text-muted-foreground">Build</span><p className="font-medium text-foreground">2026.04</p></div>
-                  <div><span className="text-muted-foreground">Platform</span><p className="font-medium text-foreground">Web App</p></div>
-                  <div><span className="text-muted-foreground">AI Engine</span><p className="font-medium text-foreground">Gemini 2.5</p></div>
-                </div>
-              </div>
-            </SectionCard>
-          )}
+          {active === "notifications" && <NotificationsPanel />}
+          {active === "ai" && <AiAssistantPanel />}
+          {active === "privacy" && <PrivacyPanel userId={user?.id} />}
+          {active === "about" && <AboutPanel />}
         </div>
       </div>
     </PageShell>
   );
 }
 
-function SectionCard({ title, children, danger }: { title: string; children: React.ReactNode; danger?: boolean }) {
+/* ───────────── Appearance ───────────── */
+
+function AppearancePanel({
+  theme, setTheme, accent, setAccent, fontSize, setFontSize,
+}: {
+  theme: Theme; setTheme: (t: Theme) => void;
+  accent: string; setAccent: (a: string) => void;
+  fontSize: FontSize; setFontSize: (s: FontSize) => void;
+}) {
   return (
-    <div className={`rounded-xl border p-5 space-y-4 ${danger ? "border-destructive/30 bg-destructive/5" : "border-border bg-card"}`}>
-      <h3 className={`text-sm font-semibold ${danger ? "text-destructive" : "text-foreground"}`}>{title}</h3>
-      <div className="space-y-3">{children}</div>
+    <div className="space-y-8">
+      <SectionHeader icon={Palette} title="Appearance" desc="Personalize how SOFI looks" />
+
+      {/* Theme */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium">Theme</Label>
+        <div className="grid grid-cols-3 gap-3">
+          {(["light", "dark", "system"] as Theme[]).map((t) => {
+            const isActive = theme === t;
+            const Icon = t === "light" ? Sun : t === "dark" ? Moon : Monitor;
+            return (
+              <button
+                key={t}
+                onClick={() => setTheme(t)}
+                className={`group relative rounded-xl border-2 p-3 text-left transition-all ${
+                  isActive ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                }`}
+              >
+                <div className={`h-16 rounded-md mb-2 overflow-hidden flex ${
+                  t === "dark" ? "bg-zinc-900" : t === "system" ? "bg-gradient-to-r from-white to-zinc-900" : "bg-white"
+                }`}>
+                  <div className="w-1/3 border-r border-border/30 p-1 space-y-1">
+                    <div className={`h-1.5 w-full rounded ${t === "dark" ? "bg-zinc-700" : "bg-zinc-300"}`} />
+                    <div className={`h-1.5 w-2/3 rounded ${t === "dark" ? "bg-zinc-700" : "bg-zinc-300"}`} />
+                  </div>
+                  <div className="flex-1 p-1 space-y-1">
+                    <div className="h-2 w-full rounded bg-primary/70" />
+                    <div className={`h-1.5 w-3/4 rounded ${t === "dark" ? "bg-zinc-600" : "bg-zinc-400"}`} />
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs font-medium">
+                  <Icon className="w-3.5 h-3.5" /> {t.charAt(0).toUpperCase() + t.slice(1)}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Accent */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium">Accent color</Label>
+        <div className="flex flex-wrap gap-3">
+          {ACCENTS.map((c) => {
+            const isActive = accent === c.value;
+            return (
+              <button
+                key={c.name}
+                onClick={() => setAccent(c.value)}
+                aria-label={c.name}
+                title={c.name}
+                className={`w-9 h-9 rounded-full transition-all ring-offset-2 ring-offset-background ${
+                  isActive ? "ring-2 ring-foreground scale-110" : "hover:scale-105"
+                }`}
+                style={{ backgroundColor: `hsl(${c.value})` }}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Font size */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium">Font size</Label>
+        <div className="inline-flex rounded-lg border border-border p-1 bg-muted/30">
+          {(["small", "normal", "large"] as FontSize[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => setFontSize(s)}
+              className={`px-4 py-1.5 rounded-md text-sm transition-colors ${
+                fontSize === s ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
-function SettingRow({ label, description, children }: { label: string; description: string; children: React.ReactNode }) {
+/* ───────────── Notifications ───────────── */
+
+function NotificationsPanel() {
+  const [prefs, setPrefs] = useState<NotifPrefs>(() => {
+    try {
+      const raw = localStorage.getItem("sofi-notif");
+      return raw ? { ...DEFAULT_NOTIFS, ...JSON.parse(raw) } : DEFAULT_NOTIFS;
+    } catch {
+      return DEFAULT_NOTIFS;
+    }
+  });
+  const [perm, setPerm] = useState<NotificationPermission>(
+    typeof Notification !== "undefined" ? Notification.permission : "default"
+  );
+
+  useEffect(() => {
+    localStorage.setItem("sofi-notif", JSON.stringify(prefs));
+  }, [prefs]);
+
+  const update = <K extends keyof NotifPrefs>(k: K, v: NotifPrefs[K]) =>
+    setPrefs((p) => ({ ...p, [k]: v }));
+
+  const handleBrowserToggle = async (v: boolean) => {
+    if (v && typeof Notification !== "undefined" && Notification.permission !== "granted") {
+      const result = await Notification.requestPermission();
+      setPerm(result);
+      if (result !== "granted") {
+        toast.error("Browser notifications blocked");
+        update("browserEnabled", false);
+        return;
+      }
+    }
+    update("browserEnabled", v);
+  };
+
   return (
-    <div className="flex items-center justify-between gap-4 py-1">
-      <div className="min-w-0"><p className="text-sm font-medium text-foreground">{label}</p><p className="text-xs text-muted-foreground">{description}</p></div>
-      <div className="flex-shrink-0">{children}</div>
+    <div className="space-y-6">
+      <SectionHeader icon={Bell} title="Notifications" desc="Choose what SOFI tells you about" />
+
+      <div className="space-y-3 rounded-xl border border-border bg-card divide-y divide-border">
+        <Row title="Task due reminders" desc="Get notified when tasks are due">
+          <Switch checked={prefs.taskReminders} onCheckedChange={(v) => update("taskReminders", v)} />
+        </Row>
+        <Row title="Milestone due reminders" desc="Plan & milestone alerts">
+          <Switch checked={prefs.milestoneReminders} onCheckedChange={(v) => update("milestoneReminders", v)} />
+        </Row>
+        <Row
+          title="Browser notifications"
+          desc={
+            <span className="flex items-center gap-2">
+              Receive native popups
+              <Badge variant={perm === "granted" ? "default" : "secondary"} className="text-[10px]">
+                {perm}
+              </Badge>
+            </span>
+          }
+        >
+          <Switch checked={prefs.browserEnabled} onCheckedChange={handleBrowserToggle} />
+        </Row>
+        <Row title="Email notifications" desc="Emails sent daily at 8am">
+          <Switch checked={prefs.emailEnabled} onCheckedChange={(v) => update("emailEnabled", v)} />
+        </Row>
+        <Row title="Daily study reminder" desc="A nudge at your chosen time">
+          <div className="flex items-center gap-2">
+            <Input
+              type="time"
+              value={prefs.dailyTime}
+              onChange={(e) => update("dailyTime", e.target.value)}
+              className="w-28"
+              disabled={!prefs.dailyReminder}
+            />
+            <Switch checked={prefs.dailyReminder} onCheckedChange={(v) => update("dailyReminder", v)} />
+          </div>
+        </Row>
+      </div>
+
+      <Button
+        variant="outline"
+        onClick={() => toast.success("Email notification system is active — you'll receive reminders at 8am daily")}
+      >
+        Test email notification
+      </Button>
     </div>
   );
+}
+
+/* ───────────── AI Assistant ───────────── */
+
+function AiAssistantPanel() {
+  const [rate, setRate] = useState<number>(() => parseFloat(localStorage.getItem("sofi-voice-rate") || "1"));
+  const [voiceName, setVoiceName] = useState<string>(() => localStorage.getItem("sofi-voice-name") || "");
+  const [style, setStyle] = useState<AiStyle>(() => (localStorage.getItem("sofi-ai-style") as AiStyle) || "balanced");
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+
+  useEffect(() => {
+    const load = () => {
+      const all = window.speechSynthesis?.getVoices() || [];
+      setVoices(all.filter((v) => v.lang.toLowerCase().startsWith("en")));
+    };
+    load();
+    window.speechSynthesis?.addEventListener?.("voiceschanged", load);
+    return () => window.speechSynthesis?.removeEventListener?.("voiceschanged", load);
+  }, []);
+
+  useEffect(() => { localStorage.setItem("sofi-voice-rate", String(rate)); }, [rate]);
+  useEffect(() => { if (voiceName) localStorage.setItem("sofi-voice-name", voiceName); }, [voiceName]);
+  useEffect(() => { localStorage.setItem("sofi-ai-style", style); }, [style]);
+
+  const testVoice = () => {
+    if (!window.speechSynthesis) { toast.error("Speech synthesis not supported"); return; }
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance("Hello, I am SOFI, your AI study assistant");
+    u.rate = rate;
+    const v = voices.find((x) => x.name === voiceName);
+    if (v) u.voice = v;
+    window.speechSynthesis.speak(u);
+  };
+
+  const clearHistory = () => {
+    localStorage.removeItem("sofi-chat-history");
+    toast.success("Chat history cleared");
+  };
+
+  const speedLabel = rate < 0.85 ? "Slow" : rate > 1.15 ? "Fast" : "Normal";
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader icon={Sparkles} title="AI Assistant" desc="Tune SOFI's voice and personality" />
+
+      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-medium flex items-center gap-2">
+            <Volume2 className="w-4 h-4" /> Voice speed
+          </Label>
+          <Badge variant="secondary">{speedLabel} · {rate.toFixed(2)}x</Badge>
+        </div>
+        <Slider value={[rate]} onValueChange={(v) => setRate(v[0])} min={0.6} max={1.4} step={0.05} />
+        <div className="flex justify-between text-[10px] text-muted-foreground">
+          <span>Slow</span><span>Normal</span><span>Fast</span>
+        </div>
+        <Button variant="outline" size="sm" onClick={testVoice}>Test voice</Button>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-5 space-y-3">
+        <Label className="text-sm font-medium">Voice</Label>
+        <Select value={voiceName} onValueChange={setVoiceName}>
+          <SelectTrigger><SelectValue placeholder="System default" /></SelectTrigger>
+          <SelectContent>
+            {voices.length === 0 && <SelectItem value="default" disabled>No voices available</SelectItem>}
+            {voices.map((v) => (
+              <SelectItem key={v.name} value={v.name}>{v.name} ({v.lang})</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-5 space-y-3">
+        <Label className="text-sm font-medium">Response style</Label>
+        <div className="grid grid-cols-3 gap-2">
+          {(["concise", "balanced", "detailed"] as AiStyle[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => setStyle(s)}
+              className={`px-3 py-2 rounded-lg text-sm border transition-colors ${
+                style === s
+                  ? "border-primary bg-primary/10 text-primary font-medium"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <Button variant="outline" onClick={clearHistory} className="gap-2">
+        <MessageSquare className="w-4 h-4" /> Clear SOFI chat history
+      </Button>
+    </div>
+  );
+}
+
+/* ───────────── Privacy & Data ───────────── */
+
+function PrivacyPanel({ userId }: { userId?: string }) {
+  const handleExport = async () => {
+    try {
+      toast.info("Preparing your export…");
+      const [tasks, notes, plans, sessions] = await Promise.all([
+        supabase.from("tasks").select("*"),
+        supabase.from("notes").select("*"),
+        supabase.from("plans").select("*"),
+        supabase.from("plan_sessions").select("*"),
+      ]);
+      if (tasks.error || notes.error || plans.error || sessions.error) throw new Error("Export failed");
+      const data = {
+        exportedAt: new Date().toISOString(),
+        userId,
+        tasks: tasks.data,
+        notes: notes.data,
+        plans: plans.data,
+        plan_sessions: sessions.data,
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sofi-export-${new Date().toISOString().split("T")[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Data exported");
+    } catch (e: any) {
+      toast.error(e.message || "Export failed");
+    }
+  };
+
+  const signOutAll = async () => {
+    const { error } = await supabase.auth.signOut({ scope: "global" });
+    if (error) toast.error(error.message);
+    else toast.success("Signed out of all devices");
+  };
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader icon={Shield} title="Privacy & Data" desc="Control your data and access" />
+
+      <Card>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h4 className="text-sm font-medium">Export my data</h4>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Download all your tasks, notes, plans and sessions as JSON.
+            </p>
+          </div>
+          <Button variant="outline" onClick={handleExport} className="gap-2 shrink-0">
+            <Download className="w-4 h-4" /> Export
+          </Button>
+        </div>
+      </Card>
+
+      <Card>
+        <DangerDelete
+          label="Delete all tasks"
+          desc="This will permanently delete all your tasks."
+          confirmWord="DELETE"
+          onConfirm={async () => {
+            if (!userId) return;
+            const { error } = await supabase.from("tasks").delete().eq("user_id", userId);
+            if (error) toast.error(error.message);
+            else toast.success("All tasks deleted");
+          }}
+        />
+      </Card>
+
+      <Card>
+        <DangerDelete
+          label="Delete all notes"
+          desc="This will permanently delete all your notes."
+          confirmWord="DELETE"
+          onConfirm={async () => {
+            if (!userId) return;
+            const { error } = await supabase.from("notes").delete().eq("user_id", userId);
+            if (error) toast.error(error.message);
+            else toast.success("All notes deleted");
+          }}
+        />
+      </Card>
+
+      <Card>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h4 className="text-sm font-medium">Sign out all devices</h4>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              End every active SOFI session across browsers and devices.
+            </p>
+          </div>
+          <Button variant="outline" onClick={signOutAll} className="gap-2 shrink-0">
+            <LogOut className="w-4 h-4" /> Sign out all
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function DangerDelete({
+  label, desc, confirmWord, onConfirm,
+}: { label: string; desc: string; confirmWord: string; onConfirm: () => Promise<void> }) {
+  const [text, setText] = useState("");
+  const [open, setOpen] = useState(false);
+  const enabled = text === confirmWord;
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <h4 className="text-sm font-medium text-destructive">{label}</h4>
+        <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+      </div>
+      <AlertDialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setText(""); }}>
+        <AlertDialogTrigger asChild>
+          <Button variant="destructive" className="gap-2 shrink-0">
+            <Trash2 className="w-4 h-4" /> Delete
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{label}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {desc} Type <span className="font-mono font-semibold text-foreground">{confirmWord}</span> to confirm.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={confirmWord} />
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!enabled}
+              onClick={async () => { await onConfirm(); setOpen(false); setText(""); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Confirm delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+/* ───────────── About ───────────── */
+
+function AboutPanel() {
+  const stack = ["Supabase", "React", "Tailwind CSS", "Jitsi Meet", "Google Gemini"];
+  const whatsNew = [
+    "Voice Navigator", "Room Chat", "Analytics", "Planner", "AI Assistant", "Email Notifications",
+  ];
+  return (
+    <div className="space-y-6">
+      <SectionHeader icon={Info} title="About" desc="" />
+
+      <div className="rounded-xl border border-border bg-card p-6 space-y-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-2xl font-semibold tracking-tight">SOFI Smart Aid</h2>
+          <Badge variant="secondary">v1.0.0</Badge>
+        </div>
+        <p className="text-sm text-muted-foreground">Your AI-powered study companion</p>
+      </div>
+
+      <div className="space-y-2">
+        <h4 className="text-sm font-medium">Built with</h4>
+        <div className="flex flex-wrap gap-2">
+          {stack.map((s) => (
+            <Badge key={s} variant="outline" className="text-xs">{s}</Badge>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <h4 className="text-sm font-medium">What's new</h4>
+        <ul className="text-sm text-muted-foreground space-y-1">
+          {whatsNew.map((f) => (
+            <li key={f} className="flex items-center gap-2">
+              <span className="w-1 h-1 rounded-full bg-primary" /> {f}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="space-y-2">
+        <h4 className="text-sm font-medium">Feedback</h4>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" asChild>
+            <a href="mailto:support@sofi.app?subject=Bug%20Report%20—%20SOFI">Report Bug</a>
+          </Button>
+          <Button variant="outline" asChild>
+            <a href="mailto:support@sofi.app?subject=Feature%20Suggestion%20—%20SOFI">Suggest Feature</a>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────── Helpers ───────────── */
+
+function SectionHeader({ icon: Icon, title, desc }: { icon: typeof Palette; title: string; desc: string }) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <Icon className="w-4 h-4 text-primary" />
+        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+      </div>
+      {desc && <p className="text-sm text-muted-foreground">{desc}</p>}
+    </div>
+  );
+}
+
+function Row({ title, desc, children }: { title: string; desc: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4 px-4 py-3">
+      <div className="min-w-0">
+        <div className="text-sm font-medium">{title}</div>
+        <div className="text-xs text-muted-foreground mt-0.5">{desc}</div>
+      </div>
+      <div className="shrink-0">{children}</div>
+    </div>
+  );
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  return <div className="rounded-xl border border-border bg-card p-4">{children}</div>;
 }

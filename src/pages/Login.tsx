@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Mail, Lock, Sparkles, ArrowRight, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import AuthLayout from "@/components/AuthLayout";
 import { toast } from "sonner";
+
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MS = 30_000;
 
 export default function Login() {
   const navigate = useNavigate();
@@ -14,6 +17,19 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [loading, setLoading] = useState(false);
+  const [attempts, setAttempts] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState(0);
+  const [, force] = useState(0);
+
+  // Tick to re-render countdown
+  useEffect(() => {
+    if (lockedUntil <= Date.now()) return;
+    const id = setInterval(() => force((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [lockedUntil]);
+
+  const isLocked = lockedUntil > Date.now();
+  const secondsLeft = isLocked ? Math.ceil((lockedUntil - Date.now()) / 1000) : 0;
 
   const validate = () => {
     const e: typeof errors = {};
@@ -27,11 +43,24 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked) return;
     if (!validate()) return;
     setLoading(true);
     const { error } = await signInWithEmail(email, password);
     setLoading(false);
     if (error) {
+      const next = attempts + 1;
+      setAttempts(next);
+      if (next >= MAX_ATTEMPTS) {
+        const until = Date.now() + LOCKOUT_MS;
+        setLockedUntil(until);
+        toast.warning("Too many attempts — wait 30 seconds");
+        setTimeout(() => {
+          setLockedUntil(0);
+          setAttempts(0);
+        }, LOCKOUT_MS);
+        return;
+      }
       if (/email not confirmed/i.test(error)) {
         toast.error("Please verify your email first — check your inbox.");
       } else if (/invalid login credentials/i.test(error)) {
@@ -40,6 +69,7 @@ export default function Login() {
         toast.error(error);
       }
     } else {
+      setAttempts(0);
       navigate("/dashboard");
     }
   };
@@ -69,7 +99,7 @@ export default function Login() {
             label="Email"
             type="email"
             value={email}
-            onChange={setEmail}
+            onChange={(v) => setEmail(v.trim().toLowerCase())}
             placeholder="you@example.com"
             error={errors.email}
             icon={<Mail className="w-4 h-4" />}
