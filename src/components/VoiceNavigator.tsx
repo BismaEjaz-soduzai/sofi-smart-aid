@@ -1,404 +1,110 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Mic, MicOff, Loader2, Volume2, Compass, X } from "lucide-react";
-import { useTasks, useToggleTask } from "@/hooks/useTasks";
-import { useNotes, useDeleteNote } from "@/hooks/useNotes";
-import { usePlans } from "@/hooks/usePlans";
-import { useFocusTimer } from "@/contexts/FocusTimerContext";
+import { Mic, MicOff, Loader2, Check, X, Send, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import { handleAiError } from "@/lib/aiError";
+import { recognizeIntent } from "@/utils/intentRecognizer";
 
-type ActionState = "idle" | "listening" | "processing" | "speaking";
+type ActionState =
+  | "idle"
+  | "listening"
+  | "thinking"      // AI is recognising intent
+  | "success"       // route found, about to navigate
+  | "error";        // intent unclear
 
-const ROUTE_MAP: Record<string, { path: string; label: string }> = {
-  dashboard: { path: "/dashboard", label: "Dashboard" },
-  home: { path: "/dashboard", label: "Dashboard" },
-  planner: { path: "/planner", label: "Planner" },
-  organizer: { path: "/organizer", label: "Organizer" },
-  tasks: { path: "/organizer", label: "Organizer" },
-  notes: { path: "/organizer", label: "Organizer" },
-  workspace: { path: "/workspace", label: "Smart Workspace" },
-  "smart workspace": { path: "/workspace", label: "Smart Workspace" },
-  assistant: { path: "/assistant", label: "SOFI Assistant" },
-  sofi: { path: "/assistant", label: "SOFI Assistant" },
-  analytics: { path: "/analytics", label: "Analytics" },
-  settings: { path: "/settings", label: "Settings" },
-  chat: { path: "/chat", label: "Chat Rooms" },
-  rooms: { path: "/chat", label: "Chat Rooms" },
+type Lang = "en" | "ur";
+
+const LANG_TO_RECOGNITION: Record<Lang, string> = {
+  en: "en-US",
+  ur: "ur-PK",
 };
 
-const PAGE_NAMES: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/planner": "Planner",
-  "/organizer": "Organizer",
-  "/workspace": "Smart Workspace",
-  "/assistant": "SOFI Assistant",
-  "/analytics": "Analytics",
-  "/settings": "Settings",
-  "/chat": "Chat Rooms",
-  "/profile": "Profile",
-  "/notes": "Notes",
-  "/tasks": "Tasks",
-};
-
-const EXAMPLE_COMMANDS = [
-  "Go to planner",
-  "Open AI room in smart workspace",
-  "Open pinboard in smart workspace",
-  "Open AI tools in smart workspace",
-  "Open chat in SOFI assistant",
-  "Open voice in SOFI assistant",
-  "Open tools in SOFI assistant",
-  "Start timer",
-  "Mark task complete",
-  "Read my analytics",
-  "Where am I",
+const QUICK_CHIPS = [
+  "Dashboard",
+  "Smart Workspace",
+  "Recordings",
+  "My Notes",
+  "FYP Room",
+  "Mood Tracker",
+  "Study Planner",
+  "AI Tools",
+  "Motivation",
 ];
-
-// ===== In-page voice action routing =====
-// Tabs available inside Smart Workspace
-const WORKSPACE_TAB_MAP: Record<string, string> = {
-  "uploads": "uploads",
-  "upload": "uploads",
-  "files": "uploads",
-  "ai tools": "ai-tools",
-  "ai-tools": "ai-tools",
-  "tools": "ai-tools",
-  "generated": "generated",
-  "output": "generated",
-  "chat": "chat",
-  "room chat": "chat",
-  "recordings": "recordings",
-  "recording": "recordings",
-  "pinboard": "pinboard",
-  "pin board": "pinboard",
-  "links": "pinboard",
-};
-
-// Sections available inside SOFI Assistant
-const ASSISTANT_SECTION_MAP: Record<string, string> = {
-  "chat": "chat",
-  "voice": "voice",
-  "voice mode": "voice",
-  "focus": "focus",
-  "focus mode": "focus",
-  "timer": "focus",
-  "tools": "tools",
-  "ai tools": "tools",
-};
-
-/**
- * Dispatch a custom window event after optional navigation so target pages can react.
- * Pages should listen for `sofi-voice-action` and read e.detail.
- */
-function dispatchVoiceAction(detail: Record<string, any>, delayMs = 0) {
-  const fire = () => window.dispatchEvent(new CustomEvent("sofi-voice-action", { detail }));
-  if (delayMs > 0) window.setTimeout(fire, delayMs);
-  else fire();
-}
-
-function stripMarkdown(s: string) {
-  return s
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/[*_~#>]+/g, "")
-    .replace(/\n{2,}/g, ". ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function pickVoice(): SpeechSynthesisVoice | null {
-  const voices = window.speechSynthesis.getVoices();
-  if (!voices.length) return null;
-  const preferred = voices.find((v) => v.name === "Google UK English Female");
-  if (preferred) return preferred;
-  const en = voices.find((v) => v.lang?.toLowerCase().startsWith("en") && /female|samantha|jenny|aria/i.test(v.name));
-  if (en) return en;
-  return voices.find((v) => v.lang?.toLowerCase().startsWith("en")) || voices[0];
-}
-
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/study-chat`;
 
 export default function VoiceNavigator() {
   const navigate = useNavigate();
   const location = useLocation();
-  const tasksQuery = useTasks();
-  const toggleTask = useToggleTask();
-  const notesQuery = useNotes();
-  const deleteNote = useDeleteNote();
-  usePlans();
-  const timer = useFocusTimer();
 
+  const [open, setOpen] = useState(false);
   const [actionState, setActionState] = useState<ActionState>("idle");
   const [transcript, setTranscript] = useState("");
-  const [lastAction, setLastAction] = useState("");
-  const [expanded, setExpanded] = useState(false);
+  const [statusText, setStatusText] = useState("");
+  const [lang, setLang] = useState<Lang>("en");
 
   const recognitionRef = useRef<any>(null);
-  const speakingRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Warm up voices on mount
+  // ----- Cleanup on unmount -----
   useEffect(() => {
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.getVoices();
-      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
-    }
-  }, []);
-
-  const speak = useCallback((text: string) => {
-    if (!text || typeof window === "undefined" || !window.speechSynthesis) return;
-    const clean = stripMarkdown(text);
-    if (!clean) return;
-    setLastAction(clean);
-    setActionState("speaking");
-    speakingRef.current = true;
-    try { window.speechSynthesis.cancel(); } catch { /* noop */ }
-    const utter = new SpeechSynthesisUtterance(clean);
-    const v = pickVoice();
-    if (v) utter.voice = v;
-    utter.lang = v?.lang || "en-US";
-    utter.rate = 0.95;
-    utter.pitch = 1;
-    utter.onend = () => {
-      speakingRef.current = false;
-      setActionState("idle");
+    return () => {
+      try { recognitionRef.current?.stop(); } catch { /* noop */ }
     };
-    utter.onerror = () => {
-      speakingRef.current = false;
+  }, []);
+
+  // ----- Open modal: focus input, reset state -----
+  useEffect(() => {
+    if (open) {
       setActionState("idle");
-    };
-    window.speechSynthesis.speak(utter);
-  }, []);
-
-  const callStudyChat = useCallback(async (text: string): Promise<string> => {
-    const resp = await fetch(CHAT_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-      },
-      body: JSON.stringify({
-        messages: [{ role: "user", content: text }],
-        voice_mode: true,
-      }),
-    });
-    if (!resp.ok || !resp.body) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.error || `Error ${resp.status}`);
+      setTranscript("");
+      setStatusText("");
+      // Tiny delay so the input exists in DOM
+      setTimeout(() => inputRef.current?.focus(), 80);
+    } else {
+      // Stop any in-flight recognition when closing
+      try { recognitionRef.current?.stop(); } catch { /* noop */ }
     }
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let content = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let idx: number;
-      while ((idx = buffer.indexOf("\n")) !== -1) {
-        let line = buffer.slice(0, idx); buffer = buffer.slice(idx + 1);
-        if (line.endsWith("\r")) line = line.slice(0, -1);
-        if (!line.startsWith("data: ")) continue;
-        const json = line.slice(6).trim();
-        if (json === "[DONE]") break;
-        try {
-          const p = JSON.parse(json);
-          const c = p.choices?.[0]?.delta?.content;
-          if (c) content += c;
-        } catch { /* partial chunk */ }
-      }
-    }
-    return content.trim();
-  }, []);
+  }, [open]);
 
-  const executeCommand = useCallback(async (raw: string) => {
+  // ===== AI-powered command handling =====
+  const handleCommand = useCallback(async (raw: string) => {
     const text = raw.trim();
     if (!text) return;
-    const lower = text.toLowerCase();
-    setActionState("processing");
+    setTranscript(text);
+    setActionState("thinking");
+    setStatusText("Understanding your command...");
 
-    try {
-      // ===== In-page section/tab routing =====
-      // Smart Workspace tabs: "open <tab> in smart workspace" / "show pinboard in workspace"
-      const wsMatch = lower.match(/(?:open|show|go to|switch to)\s+(.+?)\s+(?:in|on|inside)\s+(?:the\s+)?(?:smart\s+)?workspace/);
-      if (wsMatch) {
-        const wanted = wsMatch[1].trim();
-        const tabKey = WORKSPACE_TAB_MAP[wanted] ||
-          Object.entries(WORKSPACE_TAB_MAP).find(([k]) => wanted.includes(k))?.[1];
-        if (tabKey) {
-          const onPage = location.pathname === "/workspace";
-          if (!onPage) navigate("/workspace");
-          dispatchVoiceAction({ target: "workspace", action: "set-tab", tab: tabKey }, onPage ? 0 : 250);
-          speak(`Opening ${wanted} in Smart Workspace`);
-          return;
-        }
-      }
+    const result = await recognizeIntent(text);
 
-      // Smart Workspace: open a specific room by name — "open <name> room in workspace" or "open AI room"
-      const roomMatch = lower.match(/(?:open|join|go to|switch to)\s+(?:the\s+)?(.+?)\s+room(?:\s+(?:in|on|inside)\s+(?:the\s+)?(?:smart\s+)?workspace)?/);
-      if (roomMatch) {
-        const roomName = roomMatch[1].trim();
-        // Avoid colliding with "open chat room" → handled as nav to /chat
-        if (roomName !== "chat" && roomName !== "study") {
-          const onPage = location.pathname === "/workspace";
-          if (!onPage) navigate("/workspace");
-          dispatchVoiceAction({ target: "workspace", action: "open-room", query: roomName }, onPage ? 0 : 300);
-          speak(`Opening ${roomName} room`);
-          return;
-        }
-      }
-
-      // SOFI Assistant sections: "open chat in sofi assistant" / "open voice in sofi"
-      const sofiMatch = lower.match(/(?:open|show|go to|switch to)\s+(.+?)\s+(?:in|on|inside)\s+(?:the\s+)?(?:sofi(?:\s+assistant)?|assistant)/);
-      if (sofiMatch) {
-        const wanted = sofiMatch[1].trim();
-        const sectionKey = ASSISTANT_SECTION_MAP[wanted] ||
-          Object.entries(ASSISTANT_SECTION_MAP).find(([k]) => wanted.includes(k))?.[1];
-        if (sectionKey) {
-          navigate(`/assistant?section=${sectionKey}`);
-          speak(`Opening ${wanted} in SOFI Assistant`);
-          return;
-        }
-      }
-
-      // Navigation
-      const navMatch = lower.match(/^(?:go to|open|navigate to|take me to)\s+(?:the\s+)?(.+?)[?.!]?$/);
-      if (navMatch) {
-        const target = navMatch[1].trim();
-        const route = ROUTE_MAP[target] || Object.entries(ROUTE_MAP).find(([k]) => target.includes(k))?.[1];
-        if (route) {
-          navigate(route.path);
-          speak(`Opening ${route.label}`);
-          return;
-        }
-      }
-
-      // Timer controls
-      if (/(start|begin|resume).*(timer|focus)|^start focus$/.test(lower)) {
-        timer.setRunning(true);
-        speak("Focus timer started");
-        return;
-      }
-      if (/(stop|pause).*(timer)/.test(lower)) {
-        timer.setRunning(false);
-        speak("Timer paused");
-        return;
-      }
-      if (/reset.*(timer)/.test(lower)) {
-        timer.reset();
-        speak("Timer reset");
-        return;
-      }
-      const setTimerMatch = lower.match(/set (?:the )?timer (?:to|for) (\d{1,3})/);
-      if (setTimerMatch) {
-        const n = Math.max(1, Math.min(180, parseInt(setTimerMatch[1], 10)));
-        timer.setDuration(n);
-        speak(`Timer set to ${n} minutes`);
-        return;
-      }
-
-      // Task complete
-      if (/^(mark|complete|finish|done)/.test(lower) && /(task|done|complete)/.test(lower)) {
-        const tasks = tasksQuery.data || [];
-        const pending = tasks.filter((t) => !t.completed);
-        if (pending.length === 0) {
-          speak("You have no pending tasks");
-          return;
-        }
-        // try keyword match
-        const keyword = lower
-          .replace(/^(mark|complete|finish|done)/, "")
-          .replace(/(task|complete|done|as)/g, "")
-          .trim();
-        let target = pending[0];
-        if (keyword) {
-          const found = pending.find((t) => t.title.toLowerCase().includes(keyword));
-          if (found) target = found;
-        }
-        await toggleTask.mutateAsync({ id: target.id, completed: true });
-        speak(`Marked ${target.title} as complete`);
-        return;
-      }
-
-      // List tasks
-      if (/(list|read|tell me).*(tasks|todo)/.test(lower)) {
-        const tasks = (tasksQuery.data || []).filter((t) => !t.completed);
-        navigate("/organizer");
-        if (tasks.length === 0) {
-          speak("You have no pending tasks. Great job!");
-        } else {
-          const titles = tasks.slice(0, 3).map((t) => t.title).join(", ");
-          speak(`You have ${tasks.length} pending task${tasks.length === 1 ? "" : "s"}. Top items: ${titles}`);
-        }
-        return;
-      }
-
-      // Analytics
-      if (/(read|show|tell).*(analytics|progress|stats)|how am i doing/.test(lower)) {
-        navigate("/analytics");
-        const tasks = tasksQuery.data || [];
-        const done = tasks.filter((t) => t.completed).length;
-        const rate = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
-        speak(`You have completed ${done} of ${tasks.length} tasks. That is ${rate} percent. Keep it up!`);
-        return;
-      }
-
-      // Delete note
-      const delNoteMatch = lower.match(/delete (?:the )?note (.+)/);
-      if (delNoteMatch) {
-        const keyword = delNoteMatch[1].trim();
-        const notes = notesQuery.data || [];
-        const found = notes.find((n) => n.title.toLowerCase().includes(keyword));
-        if (!found) {
-          speak(`I could not find a note matching ${keyword}`);
-          return;
-        }
-        await deleteNote.mutateAsync(found.id);
-        speak(`Deleted note ${found.title}`);
-        return;
-      }
-
-      // Where am I
-      if (/where am i|what page|current page/.test(lower)) {
-        const name = PAGE_NAMES[location.pathname] || "an unknown page";
-        speak(`You are on ${name}`);
-        return;
-      }
-
-      // Fallback to AI
-      const reply = await callStudyChat(text);
-      if (reply) speak(reply);
-      else speak("I did not get a response. Please try again.");
-    } catch (err: any) {
-      console.error("Voice command failed", err);
-      handleAiError(err, "Voice command");
-      speak("Sorry, something went wrong");
+    if (result.route) {
+      setActionState("success");
+      setStatusText(`Opening ${result.name || "page"}...`);
+      window.setTimeout(() => {
+        navigate(result.route!);
+        setOpen(false);
+      }, 600);
+    } else {
+      setActionState("error");
+      setStatusText("I didn't catch that, please try again");
     }
-  }, [navigate, location.pathname, timer, tasksQuery.data, notesQuery.data, toggleTask, deleteNote, callStudyChat, speak]);
+  }, [navigate]);
 
+  // ===== Speech recognition =====
   const startListening = useCallback(() => {
-    const SR: any =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
       toast.error("Voice recognition not supported in this browser");
       return;
     }
-    if (actionState === "listening") return;
-    if (speakingRef.current) {
-      try { window.speechSynthesis.cancel(); } catch { /* noop */ }
-      speakingRef.current = false;
-    }
+    if (actionState === "listening" || actionState === "thinking") return;
 
     const recognition = new SR();
-    recognition.lang = "en-US";
+    recognition.lang = LANG_TO_RECOGNITION[lang];
     recognition.continuous = false;
     recognition.interimResults = true;
     recognitionRef.current = recognition;
 
     setTranscript("");
+    setStatusText(lang === "ur" ? "اب بولیں..." : "Listening...");
     setActionState("listening");
 
     recognition.onresult = (event: any) => {
@@ -411,18 +117,28 @@ export default function VoiceNavigator() {
       }
       setTranscript(final || interim);
       if (final) {
-        recognition.stop();
-        executeCommand(final);
+        try { recognition.stop(); } catch { /* noop */ }
+        handleCommand(final);
       }
     };
 
     recognition.onerror = (e: any) => {
       console.warn("Speech error", e?.error);
-      setActionState("idle");
-      if (e?.error === "not-allowed") toast.error("Microphone permission denied");
+      if (e?.error === "not-allowed") {
+        toast.error("Microphone permission denied");
+        setActionState("idle");
+        setStatusText("");
+      } else if (e?.error === "no-speech") {
+        setActionState("idle");
+        setStatusText("");
+      } else {
+        setActionState("idle");
+        setStatusText("");
+      }
     };
 
     recognition.onend = () => {
+      // If still listening with no final → drop back to idle
       setActionState((s) => (s === "listening" ? "idle" : s));
     };
 
@@ -432,124 +148,203 @@ export default function VoiceNavigator() {
       console.error("recognition.start failed", err);
       setActionState("idle");
     }
-  }, [actionState, executeCommand]);
+  }, [actionState, lang, handleCommand]);
 
   const stopListening = useCallback(() => {
     try { recognitionRef.current?.stop(); } catch { /* noop */ }
     setActionState("idle");
-  }, []);
-
-  const stopSpeaking = useCallback(() => {
-    try { window.speechSynthesis.cancel(); } catch { /* noop */ }
-    speakingRef.current = false;
-    setActionState("idle");
+    setStatusText("");
   }, []);
 
   const handleMicClick = useCallback(() => {
-    // Tap while SOFI is speaking → stop her immediately
-    if (actionState === "speaking") { stopSpeaking(); return; }
-    // Tap while listening → stop listening
     if (actionState === "listening") { stopListening(); return; }
-    // Ignore taps mid-processing
-    if (actionState === "processing") return;
+    if (actionState === "thinking") return; // can't interrupt AI
     startListening();
-  }, [actionState, stopSpeaking, stopListening, startListening]);
+  }, [actionState, stopListening, startListening]);
 
-  const mainColor =
-    actionState === "listening"
-      ? "bg-destructive text-destructive-foreground"
-      : actionState === "processing"
-      ? "bg-warning text-warning-foreground"
-      : actionState === "speaking"
-      ? "bg-success text-success-foreground"
-      : "bg-primary text-primary-foreground";
+  const handleTextSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (actionState === "thinking") return;
+    if (transcript.trim()) handleCommand(transcript);
+  };
 
-  const Icon =
-    actionState === "listening" ? MicOff
-    : actionState === "processing" ? Loader2
-    : actionState === "speaking" ? Volume2
-    : Mic;
-
+  // ===== Hide on /assistant (it has its own voice UI) =====
   if (location.pathname === "/assistant") return null;
 
+  const isProcessing = actionState === "thinking";
+  const ringClass =
+    actionState === "listening"
+      ? "ring-4 ring-destructive/50 animate-pulse"
+      : actionState === "thinking"
+      ? "ring-4 ring-primary/60 animate-pulse"
+      : actionState === "success"
+      ? "ring-4 ring-success/60"
+      : actionState === "error"
+      ? "ring-4 ring-destructive/60"
+      : "";
+
+  const micBg =
+    actionState === "listening"
+      ? "bg-destructive text-destructive-foreground"
+      : actionState === "thinking"
+      ? "bg-primary text-primary-foreground"
+      : actionState === "success"
+      ? "bg-success text-success-foreground"
+      : actionState === "error"
+      ? "bg-destructive text-destructive-foreground"
+      : "bg-primary text-primary-foreground";
+
+  const MicIcon =
+    actionState === "listening" ? MicOff
+    : actionState === "thinking" ? Loader2
+    : actionState === "success" ? Check
+    : actionState === "error" ? AlertCircle
+    : Mic;
+
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
-      {/* Transcript / last action bubble */}
+    <>
+      {/* ===== Floating launcher button ===== */}
+      <motion.button
+        onClick={() => setOpen(true)}
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-xl hover:shadow-2xl transition-shadow"
+        aria-label="Open voice navigator"
+        title="Voice navigator (any language)"
+      >
+        <Mic className="w-6 h-6" />
+      </motion.button>
+
+      {/* ===== Modal ===== */}
       <AnimatePresence>
-        {(transcript || (lastAction && actionState === "speaking")) && (
-          <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="max-w-xs glass-card px-3 py-2 rounded-xl text-xs text-foreground shadow-lg"
-          >
-            {actionState === "speaking" ? `🔊 ${lastAction}` : `“${transcript}”`}
-          </motion.div>
+        {open && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setOpen(false)}
+              className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 24, scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 320, damping: 28 }}
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[min(92vw,440px)] glass-card rounded-2xl shadow-2xl p-6"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-base font-semibold text-foreground">Voice Navigator</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Speak or type in English, Urdu, or mixed
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Language toggle */}
+                  <div className="flex items-center bg-muted rounded-full p-0.5">
+                    {(["en", "ur"] as Lang[]).map((l) => (
+                      <button
+                        key={l}
+                        onClick={() => setLang(l)}
+                        disabled={isProcessing}
+                        className={`px-3 py-1 text-[11px] font-semibold rounded-full transition-colors ${
+                          lang === l
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {l.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setOpen(false)}
+                    className="w-8 h-8 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center"
+                    aria-label="Close"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Mic button (centered) */}
+              <div className="flex justify-center my-4">
+                <button
+                  onClick={handleMicClick}
+                  disabled={actionState === "thinking"}
+                  className={`relative w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all ${micBg} ${ringClass} disabled:opacity-95`}
+                  aria-label={actionState === "listening" ? "Stop listening" : "Start listening"}
+                >
+                  <MicIcon className={`w-8 h-8 ${actionState === "thinking" ? "animate-spin" : ""}`} />
+                </button>
+              </div>
+
+              {/* Text input */}
+              <form onSubmit={handleTextSubmit} className="flex items-center gap-2 mb-2">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={transcript}
+                  onChange={(e) => setTranscript(e.target.value)}
+                  disabled={isProcessing}
+                  placeholder={lang === "ur" ? "یا یہاں ٹائپ کریں..." : "...or type your command"}
+                  className="flex-1 px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-60"
+                />
+                <button
+                  type="submit"
+                  disabled={isProcessing || !transcript.trim()}
+                  className="w-10 h-10 rounded-lg bg-primary text-primary-foreground flex items-center justify-center hover:opacity-90 transition disabled:opacity-40"
+                  aria-label="Send command"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </form>
+
+              {/* Status text */}
+              <div className="min-h-[20px] mb-3 text-center">
+                {statusText && (
+                  <p
+                    className={`text-xs font-medium ${
+                      actionState === "error"
+                        ? "text-destructive"
+                        : actionState === "success"
+                        ? "text-success"
+                        : actionState === "thinking"
+                        ? "text-primary"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {statusText}
+                  </p>
+                )}
+              </div>
+
+              {/* Quick chips */}
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                  Quick destinations
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {QUICK_CHIPS.map((chip) => (
+                    <button
+                      key={chip}
+                      onClick={() => handleCommand(chip)}
+                      disabled={isProcessing}
+                      className="px-2.5 py-1 text-[11px] rounded-full bg-muted hover:bg-primary/10 hover:text-primary text-muted-foreground transition-colors disabled:opacity-50"
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
-
-      {/* Examples tooltip */}
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="glass-card p-3 rounded-xl shadow-lg w-56"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-foreground">Try saying</p>
-              <button onClick={() => setExpanded(false)} className="text-muted-foreground hover:text-foreground">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <ul className="space-y-1">
-              {EXAMPLE_COMMANDS.map((c) => (
-                <li key={c} className="text-[11px] text-muted-foreground bg-muted/40 rounded-md px-2 py-1">
-                  “{c}”
-                </li>
-              ))}
-            </ul>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="w-10 h-10 rounded-full bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center justify-center shadow-md"
-          title="Voice commands"
-          aria-label="Show voice commands"
-        >
-          <Compass className="w-4 h-4" />
-        </button>
-
-        <div className="relative">
-          {actionState === "listening" && (
-            <>
-              <span className="absolute inset-0 rounded-full bg-destructive/40 animate-ping" />
-              <span className="absolute inset-0 rounded-full bg-destructive/20 animate-pulse" />
-            </>
-          )}
-          <button
-            onClick={handleMicClick}
-            disabled={actionState === "processing"}
-            className={`relative w-14 h-14 rounded-full flex items-center justify-center shadow-xl transition-colors disabled:opacity-90 ${mainColor}`}
-            aria-label={
-              actionState === "listening" ? "Stop listening"
-              : actionState === "speaking" ? "Stop speaking"
-              : "Start voice command"
-            }
-            title={
-              actionState === "listening" ? "Listening — tap to stop"
-              : actionState === "speaking" ? "Tap to stop SOFI"
-              : "Tap and speak"
-            }
-          >
-            <Icon className={`w-6 h-6 ${actionState === "processing" ? "animate-spin" : ""}`} />
-          </button>
-        </div>
-      </div>
-    </div>
+    </>
   );
 }
