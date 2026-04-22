@@ -44,12 +44,59 @@ const PAGE_NAMES: Record<string, string> = {
 
 const EXAMPLE_COMMANDS = [
   "Go to planner",
+  "Open AI room in smart workspace",
+  "Open pinboard in smart workspace",
+  "Open AI tools in smart workspace",
+  "Open chat in SOFI assistant",
+  "Open voice in SOFI assistant",
+  "Open tools in SOFI assistant",
   "Start timer",
   "Mark task complete",
   "Read my analytics",
-  "Delete note shopping",
   "Where am I",
 ];
+
+// ===== In-page voice action routing =====
+// Tabs available inside Smart Workspace
+const WORKSPACE_TAB_MAP: Record<string, string> = {
+  "uploads": "uploads",
+  "upload": "uploads",
+  "files": "uploads",
+  "ai tools": "ai-tools",
+  "ai-tools": "ai-tools",
+  "tools": "ai-tools",
+  "generated": "generated",
+  "output": "generated",
+  "chat": "chat",
+  "room chat": "chat",
+  "recordings": "recordings",
+  "recording": "recordings",
+  "pinboard": "pinboard",
+  "pin board": "pinboard",
+  "links": "pinboard",
+};
+
+// Sections available inside SOFI Assistant
+const ASSISTANT_SECTION_MAP: Record<string, string> = {
+  "chat": "chat",
+  "voice": "voice",
+  "voice mode": "voice",
+  "focus": "focus",
+  "focus mode": "focus",
+  "timer": "focus",
+  "tools": "tools",
+  "ai tools": "tools",
+};
+
+/**
+ * Dispatch a custom window event after optional navigation so target pages can react.
+ * Pages should listen for `sofi-voice-action` and read e.detail.
+ */
+function dispatchVoiceAction(detail: Record<string, any>, delayMs = 0) {
+  const fire = () => window.dispatchEvent(new CustomEvent("sofi-voice-action", { detail }));
+  if (delayMs > 0) window.setTimeout(fire, delayMs);
+  else fire();
+}
 
 function stripMarkdown(s: string) {
   return s
@@ -174,6 +221,49 @@ export default function VoiceNavigator() {
     setActionState("processing");
 
     try {
+      // ===== In-page section/tab routing =====
+      // Smart Workspace tabs: "open <tab> in smart workspace" / "show pinboard in workspace"
+      const wsMatch = lower.match(/(?:open|show|go to|switch to)\s+(.+?)\s+(?:in|on|inside)\s+(?:the\s+)?(?:smart\s+)?workspace/);
+      if (wsMatch) {
+        const wanted = wsMatch[1].trim();
+        const tabKey = WORKSPACE_TAB_MAP[wanted] ||
+          Object.entries(WORKSPACE_TAB_MAP).find(([k]) => wanted.includes(k))?.[1];
+        if (tabKey) {
+          const onPage = location.pathname === "/workspace";
+          if (!onPage) navigate("/workspace");
+          dispatchVoiceAction({ target: "workspace", action: "set-tab", tab: tabKey }, onPage ? 0 : 250);
+          speak(`Opening ${wanted} in Smart Workspace`);
+          return;
+        }
+      }
+
+      // Smart Workspace: open a specific room by name — "open <name> room in workspace" or "open AI room"
+      const roomMatch = lower.match(/(?:open|join|go to|switch to)\s+(?:the\s+)?(.+?)\s+room(?:\s+(?:in|on|inside)\s+(?:the\s+)?(?:smart\s+)?workspace)?/);
+      if (roomMatch) {
+        const roomName = roomMatch[1].trim();
+        // Avoid colliding with "open chat room" → handled as nav to /chat
+        if (roomName !== "chat" && roomName !== "study") {
+          const onPage = location.pathname === "/workspace";
+          if (!onPage) navigate("/workspace");
+          dispatchVoiceAction({ target: "workspace", action: "open-room", query: roomName }, onPage ? 0 : 300);
+          speak(`Opening ${roomName} room`);
+          return;
+        }
+      }
+
+      // SOFI Assistant sections: "open chat in sofi assistant" / "open voice in sofi"
+      const sofiMatch = lower.match(/(?:open|show|go to|switch to)\s+(.+?)\s+(?:in|on|inside)\s+(?:the\s+)?(?:sofi(?:\s+assistant)?|assistant)/);
+      if (sofiMatch) {
+        const wanted = sofiMatch[1].trim();
+        const sectionKey = ASSISTANT_SECTION_MAP[wanted] ||
+          Object.entries(ASSISTANT_SECTION_MAP).find(([k]) => wanted.includes(k))?.[1];
+        if (sectionKey) {
+          navigate(`/assistant?section=${sectionKey}`);
+          speak(`Opening ${wanted} in SOFI Assistant`);
+          return;
+        }
+      }
+
       // Navigation
       const navMatch = lower.match(/^(?:go to|open|navigate to|take me to)\s+(?:the\s+)?(.+?)[?.!]?$/);
       if (navMatch) {
@@ -349,6 +439,22 @@ export default function VoiceNavigator() {
     setActionState("idle");
   }, []);
 
+  const stopSpeaking = useCallback(() => {
+    try { window.speechSynthesis.cancel(); } catch { /* noop */ }
+    speakingRef.current = false;
+    setActionState("idle");
+  }, []);
+
+  const handleMicClick = useCallback(() => {
+    // Tap while SOFI is speaking → stop her immediately
+    if (actionState === "speaking") { stopSpeaking(); return; }
+    // Tap while listening → stop listening
+    if (actionState === "listening") { stopListening(); return; }
+    // Ignore taps mid-processing
+    if (actionState === "processing") return;
+    startListening();
+  }, [actionState, stopSpeaking, stopListening, startListening]);
+
   const mainColor =
     actionState === "listening"
       ? "bg-destructive text-destructive-foreground"
@@ -426,11 +532,19 @@ export default function VoiceNavigator() {
             </>
           )}
           <button
-            onClick={actionState === "listening" ? stopListening : startListening}
-            disabled={actionState === "processing" || actionState === "speaking"}
+            onClick={handleMicClick}
+            disabled={actionState === "processing"}
             className={`relative w-14 h-14 rounded-full flex items-center justify-center shadow-xl transition-colors disabled:opacity-90 ${mainColor}`}
-            aria-label={actionState === "listening" ? "Stop listening" : "Start voice command"}
-            title={actionState === "listening" ? "Listening — click to stop" : "Click and speak"}
+            aria-label={
+              actionState === "listening" ? "Stop listening"
+              : actionState === "speaking" ? "Stop speaking"
+              : "Start voice command"
+            }
+            title={
+              actionState === "listening" ? "Listening — tap to stop"
+              : actionState === "speaking" ? "Tap to stop SOFI"
+              : "Tap and speak"
+            }
           >
             <Icon className={`w-6 h-6 ${actionState === "processing" ? "animate-spin" : ""}`} />
           </button>

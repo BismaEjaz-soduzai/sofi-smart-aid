@@ -547,6 +547,31 @@ export default function SmartWorkspace() {
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [newRoom, setNewRoom] = useState({ name: "", emoji: "📁", color: "blue" });
 
+  // ===== Voice Navigator: react to global voice actions =====
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || detail.target !== "workspace") return;
+      if (detail.action === "set-tab" && detail.tab) {
+        setTab(detail.tab as Tab);
+        toast.success(`Opened ${detail.tab}`);
+      } else if (detail.action === "open-room" && detail.query) {
+        const q = String(detail.query).toLowerCase().trim();
+        const match = rooms.find(
+          (r) => r.name.toLowerCase() === q || r.name.toLowerCase().includes(q),
+        );
+        if (match) {
+          setActiveRoomId(match.id);
+          toast.success(`Opened ${match.name}`);
+        } else {
+          toast.error(`No room matching "${detail.query}"`);
+        }
+      }
+    };
+    window.addEventListener("sofi-voice-action", handler as EventListener);
+    return () => window.removeEventListener("sofi-voice-action", handler as EventListener);
+  }, [rooms]);
+
   const filtered = files.filter((f) => f.file_name.toLowerCase().includes(search.toLowerCase()));
 
   const handleDrop = useCallback((e: React.DragEvent) => {
