@@ -102,13 +102,15 @@ export default function SofiAssistant() {
       </div>
 
       {section === "chat" && (
-        <div className="flex flex-1 overflow-hidden">
-          <div className="flex-1 flex flex-col">
+        <div className="flex flex-1 overflow-hidden min-h-0">
+          <div className="flex-1 flex flex-col min-w-0">
             <ChatSection initialPrompt={sharedPrompt} onPromptConsumed={() => setSharedPrompt("")} />
           </div>
-          <div className="hidden lg:block w-72 border-l border-border p-4 overflow-auto bg-card/30">
-            <AdaptiveInsights onAskSofi={handleAskSofi} />
-          </div>
+          <aside className="hidden lg:flex w-80 flex-shrink-0 border-l border-border bg-card/30 flex-col min-h-0">
+            <div className="flex-1 overflow-y-auto p-4">
+              <AdaptiveInsights onAskSofi={handleAskSofi} />
+            </div>
+          </aside>
         </div>
       )}
       {section === "voice" && <VoiceMode onSwitchToText={() => changeSection("chat")} />}
