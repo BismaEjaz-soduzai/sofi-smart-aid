@@ -239,37 +239,113 @@ function AppearancePanel({
 /* ───────────── Notifications ───────────── */
 
 function NotificationsPanel() {
-  const [prefs, setPrefs] = useState<NotifPrefs>(() => {
-    try {
-      const raw = localStorage.getItem("sofi-notif");
-      return raw ? { ...DEFAULT_NOTIFS, ...JSON.parse(raw) } : DEFAULT_NOTIFS;
-    } catch {
-      return DEFAULT_NOTIFS;
-    }
+  const { user } = useAuth();
+  const [prefs, setPrefs] = useState<{
+    task_reminders: boolean;
+    milestone_reminders: boolean;
+    browser_enabled: boolean;
+    email_enabled: boolean;
+    daily_reminder: boolean;
+    daily_time: string;
+    reminder_lead_hours: number;
+  }>({
+    task_reminders: true,
+    milestone_reminders: true,
+    browser_enabled: false,
+    email_enabled: true,
+    daily_reminder: false,
+    daily_time: "08:00",
+    reminder_lead_hours: 24,
   });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [perm, setPerm] = useState<NotificationPermission>(
     typeof Notification !== "undefined" ? Notification.permission : "default"
   );
 
   useEffect(() => {
-    localStorage.setItem("sofi-notif", JSON.stringify(prefs));
-  }, [prefs]);
+    if (!user?.id) return;
+    (async () => {
+      const { data } = await supabase
+        .from("notification_preferences")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (data) {
+        setPrefs({
+          task_reminders: data.task_reminders,
+          milestone_reminders: data.milestone_reminders,
+          browser_enabled: data.browser_enabled,
+          email_enabled: data.email_enabled,
+          daily_reminder: data.daily_reminder,
+          daily_time: (data.daily_time as string)?.slice(0, 5) || "08:00",
+          reminder_lead_hours: data.reminder_lead_hours,
+        });
+      }
+      setLoading(false);
+    })();
+  }, [user?.id]);
 
-  const update = <K extends keyof NotifPrefs>(k: K, v: NotifPrefs[K]) =>
+  useEffect(() => {
+    if (!user?.id || loading) return;
+    const t = setTimeout(async () => {
+      setSaving(true);
+      const { error } = await supabase
+        .from("notification_preferences")
+        .upsert({ user_id: user.id, ...prefs }, { onConflict: "user_id" });
+      setSaving(false);
+      if (error) toast.error("Couldn't save preferences");
+    }, 500);
+    return () => clearTimeout(t);
+  }, [prefs, user?.id, loading]);
+
+  const update = <K extends keyof typeof prefs>(k: K, v: typeof prefs[K]) =>
     setPrefs((p) => ({ ...p, [k]: v }));
 
   const handleBrowserToggle = async (v: boolean) => {
-    if (v && typeof Notification !== "undefined" && Notification.permission !== "granted") {
-      const result = await Notification.requestPermission();
-      setPerm(result);
-      if (result !== "granted") {
-        toast.error("Browser notifications blocked");
-        update("browserEnabled", false);
+    if (v && typeof Notification !== "undefined") {
+      try {
+        const result = await Notification.requestPermission();
+        setPerm(result);
+        if (result !== "granted") {
+          toast.error(
+            result === "denied"
+              ? "Notifications blocked — enable them from your browser's site settings (lock icon → Notifications → Allow)"
+              : "Permission not granted"
+          );
+          update("browser_enabled", false);
+          return;
+        }
+        new Notification("SOFI notifications enabled", {
+          body: "You'll receive reminders for tasks and milestones here.",
+          icon: "/favicon.ico",
+        });
+      } catch {
+        toast.error("Browser doesn't support notifications");
+        update("browser_enabled", false);
         return;
       }
     }
-    update("browserEnabled", v);
+    update("browser_enabled", v);
   };
+
+  const sendTestEmail = async () => {
+    if (!user?.id) return;
+    toast.info("Triggering reminder check…");
+    const { data, error } = await supabase.functions.invoke("send-reminders", {
+      body: { test: true, user_id: user.id },
+    });
+    if (error) toast.error(error.message);
+    else toast.success(data?.message || "Reminder run complete");
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground">
+        <Loader2 className="w-5 h-5 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -277,47 +353,66 @@ function NotificationsPanel() {
 
       <div className="space-y-3 rounded-xl border border-border bg-card divide-y divide-border">
         <Row title="Task due reminders" desc="Get notified when tasks are due">
-          <Switch checked={prefs.taskReminders} onCheckedChange={(v) => update("taskReminders", v)} />
+          <Switch checked={prefs.task_reminders} onCheckedChange={(v) => update("task_reminders", v)} />
         </Row>
         <Row title="Milestone due reminders" desc="Plan & milestone alerts">
-          <Switch checked={prefs.milestoneReminders} onCheckedChange={(v) => update("milestoneReminders", v)} />
+          <Switch checked={prefs.milestone_reminders} onCheckedChange={(v) => update("milestone_reminders", v)} />
         </Row>
         <Row
           title="Browser notifications"
           desc={
             <span className="flex items-center gap-2">
               Receive native popups
-              <Badge variant={perm === "granted" ? "default" : "secondary"} className="text-[10px]">
+              <Badge variant={perm === "granted" ? "default" : perm === "denied" ? "destructive" : "secondary"} className="text-[10px]">
                 {perm}
               </Badge>
             </span>
           }
         >
-          <Switch checked={prefs.browserEnabled} onCheckedChange={handleBrowserToggle} />
+          <Switch checked={prefs.browser_enabled} onCheckedChange={handleBrowserToggle} />
         </Row>
-        <Row title="Email notifications" desc="Emails sent daily at 8am">
-          <Switch checked={prefs.emailEnabled} onCheckedChange={(v) => update("emailEnabled", v)} />
+        <Row title="Email notifications" desc="Overdue and upcoming items emailed to you">
+          <Switch checked={prefs.email_enabled} onCheckedChange={(v) => update("email_enabled", v)} />
+        </Row>
+        <Row title="Reminder lead time" desc="How far ahead to remind you">
+          <Select
+            value={String(prefs.reminder_lead_hours)}
+            onValueChange={(v) => update("reminder_lead_hours", parseInt(v))}
+          >
+            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">1 hour</SelectItem>
+              <SelectItem value="6">6 hours</SelectItem>
+              <SelectItem value="12">12 hours</SelectItem>
+              <SelectItem value="24">1 day</SelectItem>
+              <SelectItem value="48">2 days</SelectItem>
+            </SelectContent>
+          </Select>
         </Row>
         <Row title="Daily study reminder" desc="A nudge at your chosen time">
           <div className="flex items-center gap-2">
             <Input
               type="time"
-              value={prefs.dailyTime}
-              onChange={(e) => update("dailyTime", e.target.value)}
+              value={prefs.daily_time}
+              onChange={(e) => update("daily_time", e.target.value)}
               className="w-28"
-              disabled={!prefs.dailyReminder}
+              disabled={!prefs.daily_reminder}
             />
-            <Switch checked={prefs.dailyReminder} onCheckedChange={(v) => update("dailyReminder", v)} />
+            <Switch checked={prefs.daily_reminder} onCheckedChange={(v) => update("daily_reminder", v)} />
           </div>
         </Row>
       </div>
 
-      <Button
-        variant="outline"
-        onClick={() => toast.success("Email notification system is active — you'll receive reminders at 8am daily")}
-      >
-        Test email notification
-      </Button>
+      <div className="flex items-center gap-3">
+        <Button variant="outline" onClick={sendTestEmail}>
+          Run reminders now
+        </Button>
+        {saving && (
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <Loader2 className="w-3 h-3 animate-spin" /> Saving…
+          </span>
+        )}
+      </div>
     </div>
   );
 }
