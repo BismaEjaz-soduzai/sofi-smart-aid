@@ -553,7 +553,38 @@ export default function SmartWorkspace() {
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [newRoom, setNewRoom] = useState({ name: "", emoji: "📁", color: "blue" });
 
-  // ===== Voice Navigator: react to global voice actions =====
+  // ===== URL → state sync (deep links from Voice Navigator etc.) =====
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    const valid: Tab[] = ["uploads", "ai-tools", "generated", "chat", "recordings", "pinboard"];
+    if (t && valid.includes(t as Tab) && t !== tab) {
+      setTab(t as Tab);
+    }
+    const roomQuery = searchParams.get("room");
+    if (roomQuery && rooms.length > 0) {
+      const q = roomQuery.toLowerCase().trim();
+      const match = rooms.find(
+        (r) => r.name.toLowerCase() === q || r.name.toLowerCase().includes(q),
+      );
+      if (match && match.id !== activeRoomId) {
+        setActiveRoomId(match.id);
+        toast.success(`Opened ${match.name}`);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, rooms]);
+
+  // Keep URL in sync when user changes tab manually (so voice deep-links remain shareable)
+  useEffect(() => {
+    const current = searchParams.get("tab");
+    if (current !== tab) {
+      const next = new URLSearchParams(searchParams);
+      next.set("tab", tab);
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
