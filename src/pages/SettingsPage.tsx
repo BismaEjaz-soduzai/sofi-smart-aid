@@ -515,9 +515,59 @@ function AiAssistantPanel() {
 
 /* ───────────── Privacy & Data ───────────── */
 
+type ExportFormat = "json" | "csv" | "markdown";
+
 function PrivacyPanel({ userId }: { userId?: string }) {
+  const [format, setFormat] = useState<ExportFormat>("csv");
+  const [exporting, setExporting] = useState(false);
+  const [signOutOpen, setSignOutOpen] = useState(false);
+
+  const downloadFile = (content: string, mime: string, ext: string) => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sofi-export-${new Date().toISOString().split("T")[0]}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const toCSV = (rows: any[]) => {
+    if (!rows?.length) return "";
+    const cols = Array.from(new Set(rows.flatMap((r) => Object.keys(r))));
+    const esc = (v: any) => {
+      if (v == null) return "";
+      const s = typeof v === "object" ? JSON.stringify(v) : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    return [cols.join(","), ...rows.map((r) => cols.map((c) => esc(r[c])).join(","))].join("\n");
+  };
+
+  const toMarkdown = (sections: Record<string, any[]>) => {
+    let out = `# SOFI Export\n\n_Exported ${new Date().toLocaleString()}_\n\n`;
+    for (const [name, rows] of Object.entries(sections)) {
+      out += `## ${name} (${rows?.length || 0})\n\n`;
+      if (!rows?.length) { out += "_None_\n\n"; continue; }
+      const cols = Array.from(new Set(rows.flatMap((r) => Object.keys(r))));
+      out += `| ${cols.join(" | ")} |\n| ${cols.map(() => "---").join(" | ")} |\n`;
+      for (const r of rows) {
+        out += `| ${cols.map((c) => {
+          const v = r[c];
+          if (v == null) return "";
+          const s = typeof v === "object" ? JSON.stringify(v) : String(v);
+          return s.replace(/\|/g, "\\|").replace(/\n/g, " ");
+        }).join(" | ")} |\n`;
+      }
+      out += "\n";
+    }
+    return out;
+  };
+
   const handleExport = async () => {
     try {
+      setExporting(true);
       toast.info("Preparing your export…");
       const [tasks, notes, plans, sessions] = await Promise.all([
         supabase.from("tasks").select("*"),
@@ -526,26 +576,33 @@ function PrivacyPanel({ userId }: { userId?: string }) {
         supabase.from("plan_sessions").select("*"),
       ]);
       if (tasks.error || notes.error || plans.error || sessions.error) throw new Error("Export failed");
-      const data = {
-        exportedAt: new Date().toISOString(),
-        userId,
-        tasks: tasks.data,
-        notes: notes.data,
-        plans: plans.data,
-        plan_sessions: sessions.data,
+      const sections = {
+        Tasks: tasks.data || [],
+        Notes: notes.data || [],
+        Plans: plans.data || [],
+        "Plan Sessions": sessions.data || [],
       };
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `sofi-export-${new Date().toISOString().split("T")[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+
+      if (format === "json") {
+        downloadFile(
+          JSON.stringify({ exportedAt: new Date().toISOString(), userId, ...sections }, null, 2),
+          "application/json",
+          "json"
+        );
+      } else if (format === "csv") {
+        // ZIP-like single multi-section CSV
+        const out = Object.entries(sections)
+          .map(([name, rows]) => `### ${name}\n${toCSV(rows)}`)
+          .join("\n\n");
+        downloadFile(out, "text/csv", "csv");
+      } else {
+        downloadFile(toMarkdown(sections), "text/markdown", "md");
+      }
       toast.success("Data exported");
     } catch (e: any) {
       toast.error(e.message || "Export failed");
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -553,23 +610,47 @@ function PrivacyPanel({ userId }: { userId?: string }) {
     const { error } = await supabase.auth.signOut({ scope: "global" });
     if (error) toast.error(error.message);
     else toast.success("Signed out of all devices");
+    setSignOutOpen(false);
   };
+
+  const formatIcon = format === "json" ? FileJson : format === "csv" ? TableIcon : FileText;
+  const FormatIcon = formatIcon;
 
   return (
     <div className="space-y-6">
       <SectionHeader icon={Shield} title="Privacy & Data" desc="Control your data and access" />
 
       <Card>
-        <div className="flex items-start justify-between gap-4">
+        <div className="space-y-4">
           <div>
             <h4 className="text-sm font-medium">Export my data</h4>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Download all your tasks, notes, plans and sessions as JSON.
+              Download all your tasks, notes, plans and sessions in your preferred format.
             </p>
           </div>
-          <Button variant="outline" onClick={handleExport} className="gap-2 shrink-0">
-            <Download className="w-4 h-4" /> Export
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="inline-flex rounded-lg border border-border p-1 bg-muted/30">
+              {([
+                { v: "csv" as const, label: "CSV", Icon: TableIcon },
+                { v: "markdown" as const, label: "Markdown", Icon: FileText },
+                { v: "json" as const, label: "JSON", Icon: FileJson },
+              ]).map(({ v, label, Icon }) => (
+                <button
+                  key={v}
+                  onClick={() => setFormat(v)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors ${
+                    format === v ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" /> {label}
+                </button>
+              ))}
+            </div>
+            <Button onClick={handleExport} disabled={exporting} className="gap-2">
+              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Export as {format.toUpperCase()}
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -609,9 +690,25 @@ function PrivacyPanel({ userId }: { userId?: string }) {
               End every active SOFI session across browsers and devices.
             </p>
           </div>
-          <Button variant="outline" onClick={signOutAll} className="gap-2 shrink-0">
-            <LogOut className="w-4 h-4" /> Sign out all
-          </Button>
+          <AlertDialog open={signOutOpen} onOpenChange={setSignOutOpen}>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="gap-2 shrink-0">
+                <LogOut className="w-4 h-4" /> Sign out all
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Sign out of every device?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  You'll need to sign in again on every browser and device where SOFI is currently open.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={signOutAll}>Sign out everywhere</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </Card>
     </div>
