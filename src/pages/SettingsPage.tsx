@@ -279,6 +279,71 @@ function AppearancePanel({
           ))}
         </div>
       </div>
+
+      {/* Density */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium">Interface density</Label>
+        <div className="inline-flex rounded-lg border border-border p-1 bg-muted/30">
+          {(["compact", "comfortable", "spacious"] as Density[]).map((d) => (
+            <button
+              key={d}
+              onClick={() => setDensity(d)}
+              className={`px-4 py-1.5 rounded-md text-sm transition-colors ${
+                density === d ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {d.charAt(0).toUpperCase() + d.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Corner radius */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium">Corner style</Label>
+        <div className="inline-flex rounded-lg border border-border p-1 bg-muted/30">
+          {(["sharp", "default", "round"] as Radius[]).map((r) => (
+            <button
+              key={r}
+              onClick={() => setRadius(r)}
+              className={`px-4 py-1.5 rounded-md text-sm transition-colors ${
+                radius === r ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {r.charAt(0).toUpperCase() + r.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Accessibility toggles */}
+      <div className="space-y-3 rounded-xl border border-border bg-card divide-y divide-border">
+        <Row title="Reduce motion" desc="Minimize animations and transitions">
+          <Switch checked={reducedMotion} onCheckedChange={setReducedMotion} />
+        </Row>
+        <Row title="High contrast" desc="Stronger borders and text contrast">
+          <Switch checked={highContrast} onCheckedChange={setHighContrast} />
+        </Row>
+      </div>
+
+      {/* Live preview */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium">Preview</Label>
+        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-base font-semibold text-foreground">Sample card</div>
+              <div className="text-sm text-muted-foreground">This updates as you change settings.</div>
+            </div>
+            <Button size="sm">Action</Button>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <Badge>Primary</Badge>
+            <Badge variant="secondary">Secondary</Badge>
+            <Badge variant="outline">Outline</Badge>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
