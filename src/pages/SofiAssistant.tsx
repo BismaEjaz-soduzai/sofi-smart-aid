@@ -134,9 +134,8 @@ async function extractTextFromFile(file: File): Promise<string> {
     return extractPdfText(buffer, file.name);
   }
   
-  if (ext === "docx" || ext === "doc") {
-    const buffer = await file.arrayBuffer();
-    return extractDocxText(buffer, file.name);
+  if (["docx", "doc", "ppt", "pptx"].includes(ext)) {
+    return `[${file.name}] This file type is better opened through the workspace document reader so formatting and extraction stay intact.`;
   }
   
   // Fallback: try reading as text

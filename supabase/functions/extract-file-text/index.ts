@@ -98,10 +98,10 @@ serve(async (req) => {
     } else if (ext === "pdf") {
       const buffer = await fileData.arrayBuffer();
       extractedText = await extractPdfText(buffer, fileName);
-    } else if (ext === "docx") {
+    } else if (ext === "docx" || ext === "doc") {
       const buffer = await fileData.arrayBuffer();
       extractedText = await extractDocxText(buffer, fileName);
-    } else if (ext === "pptx") {
+    } else if (ext === "pptx" || ext === "ppt") {
       const buffer = await fileData.arrayBuffer();
       extractedText = await extractPptxText(buffer, fileName);
     } else {
@@ -123,7 +123,9 @@ serve(async (req) => {
       extractedText = extractedText.slice(0, 60000) + "\n\n[... text truncated at 60,000 characters]";
     }
 
-    return new Response(JSON.stringify({ text: extractedText }), {
+    const extractionQuality = assessExtractionQuality(ext, extractedText);
+
+    return new Response(JSON.stringify({ text: extractedText, quality: extractionQuality }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
@@ -154,6 +156,29 @@ function normalizeText(value: string) {
 
 function stripXmlTags(value: string) {
   return value.replace(/<[^>]+>/g, " ");
+}
+
+function assessExtractionQuality(ext: string, text: string): "good" | "limited" | "empty" {
+  const clean = normalizeText(text || "");
+  if (!clean) return "empty";
+
+  const warningPatterns = [
+    /text extraction limited/i,
+    /could not extract/i,
+    /unsupported file type/i,
+    /no readable/i,
+    /document structure not found/i,
+  ];
+
+  if (warningPatterns.some((pattern) => pattern.test(clean))) {
+    return clean.length > 120 ? "limited" : "empty";
+  }
+
+  if (["pdf", "doc", "docx", "ppt", "pptx"].includes(ext) && clean.length < 120) {
+    return "limited";
+  }
+
+  return "good";
 }
 
 async function extractPdfText(buffer: ArrayBuffer, fileName: string): Promise<string> {
