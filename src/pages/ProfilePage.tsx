@@ -544,3 +544,171 @@ function AchievementsTab({
     </div>
   );
 }
+
+/* ─────────── account card (compact left column) ─────────── */
+
+function AccountCard({ email }: { email: string }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
+      <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Account</div>
+      <div className="space-y-2">
+        <div className="flex items-start gap-2 text-sm">
+          <AtSign className="w-3.5 h-3.5 mt-0.5 text-muted-foreground shrink-0" />
+          <div className="min-w-0">
+            <div className="text-[11px] text-muted-foreground">Email</div>
+            <div className="truncate font-medium">{email}</div>
+          </div>
+        </div>
+        <div className="text-[11px] text-muted-foreground pt-1">
+          Manage password, name and bio in the <span className="font-medium text-foreground">Account</span> tab →
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────── account tab (full editor) ─────────── */
+
+function AccountTab({ email }: { email: string }) {
+  const { data: profile } = useProfile();
+  const updateProfile = useUpdateProfile();
+  const [bio, setBio] = useState("");
+  const [savingBio, setSavingBio] = useState(false);
+
+  const [currentPwd, setCurrentPwd] = useState("");
+  const [newPwd, setNewPwd] = useState("");
+  const [confirmPwd, setConfirmPwd] = useState("");
+  const [pwdLoading, setPwdLoading] = useState(false);
+
+  const [resetting, setResetting] = useState(false);
+
+  useEffect(() => {
+    if (profile?.bio !== undefined && profile?.bio !== null) setBio(profile.bio);
+  }, [profile?.bio]);
+
+  const saveBio = async () => {
+    setSavingBio(true);
+    try {
+      await updateProfile.mutateAsync({ bio });
+    } finally {
+      setSavingBio(false);
+    }
+  };
+
+  const changePassword = async () => {
+    if (newPwd.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      toast.error("Passwords don't match");
+      return;
+    }
+    setPwdLoading(true);
+    try {
+      // Re-authenticate to confirm current password
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email,
+        password: currentPwd,
+      });
+      if (signInErr) {
+        toast.error("Current password is incorrect");
+        return;
+      }
+      const { error } = await supabase.auth.updateUser({ password: newPwd });
+      if (error) throw error;
+      toast.success("Password updated");
+      setCurrentPwd(""); setNewPwd(""); setConfirmPwd("");
+    } catch (err: any) {
+      toast.error(err.message || "Couldn't update password");
+    } finally {
+      setPwdLoading(false);
+    }
+  };
+
+  const sendResetEmail = async () => {
+    setResetting(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setResetting(false);
+    if (error) toast.error(error.message);
+    else toast.success("Reset link sent to your email");
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Email */}
+      <section className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Mail className="w-4 h-4 text-muted-foreground" />
+          <h4 className="text-sm font-semibold">Email address</h4>
+        </div>
+        <Input value={email} disabled className="font-mono text-sm" />
+        <p className="text-xs text-muted-foreground">
+          Your email is used for sign-in and notifications. Contact support to change it.
+        </p>
+      </section>
+
+      {/* About you */}
+      <section className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <UserIcon className="w-4 h-4 text-muted-foreground" />
+          <h4 className="text-sm font-semibold">About you</h4>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="bio" className="text-xs">Short bio</Label>
+          <Textarea
+            id="bio"
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            placeholder="A few words about you, your goals, what you're studying…"
+            rows={4}
+            maxLength={300}
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-muted-foreground">{bio.length}/300</span>
+            <Button size="sm" onClick={saveBio} disabled={savingBio}>
+              {savingBio ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Save className="w-3.5 h-3.5 mr-1.5" />}
+              Save bio
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Password */}
+      <section className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <KeyRound className="w-4 h-4 text-muted-foreground" />
+          <h4 className="text-sm font-semibold">Change password</h4>
+        </div>
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <Label htmlFor="current-pwd" className="text-xs">Current password</Label>
+            <Input id="current-pwd" type="password" value={currentPwd} onChange={(e) => setCurrentPwd(e.target.value)} />
+          </div>
+          <div className="grid sm:grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="new-pwd" className="text-xs">New password</Label>
+              <Input id="new-pwd" type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="confirm-pwd" className="text-xs">Confirm new</Label>
+              <Input id="confirm-pwd" type="password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
+            <Button variant="ghost" size="sm" onClick={sendResetEmail} disabled={resetting}>
+              {resetting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+              Forgot password? Email me a link
+            </Button>
+            <Button size="sm" onClick={changePassword} disabled={pwdLoading || !currentPwd || !newPwd}>
+              {pwdLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Lock className="w-3.5 h-3.5 mr-1.5" />}
+              Update password
+            </Button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
