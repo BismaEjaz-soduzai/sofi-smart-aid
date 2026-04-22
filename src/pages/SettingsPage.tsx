@@ -6,7 +6,9 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   Settings as SettingsIcon, Palette, Bell, Sparkles, Shield, Info,
   Sun, Moon, Monitor, Download, Trash2, LogOut, Volume2, MessageSquare,
+  Send, FileJson, FileText, Table as TableIcon, Loader2,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -237,37 +239,113 @@ function AppearancePanel({
 /* ───────────── Notifications ───────────── */
 
 function NotificationsPanel() {
-  const [prefs, setPrefs] = useState<NotifPrefs>(() => {
-    try {
-      const raw = localStorage.getItem("sofi-notif");
-      return raw ? { ...DEFAULT_NOTIFS, ...JSON.parse(raw) } : DEFAULT_NOTIFS;
-    } catch {
-      return DEFAULT_NOTIFS;
-    }
+  const { user } = useAuth();
+  const [prefs, setPrefs] = useState<{
+    task_reminders: boolean;
+    milestone_reminders: boolean;
+    browser_enabled: boolean;
+    email_enabled: boolean;
+    daily_reminder: boolean;
+    daily_time: string;
+    reminder_lead_hours: number;
+  }>({
+    task_reminders: true,
+    milestone_reminders: true,
+    browser_enabled: false,
+    email_enabled: true,
+    daily_reminder: false,
+    daily_time: "08:00",
+    reminder_lead_hours: 24,
   });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [perm, setPerm] = useState<NotificationPermission>(
     typeof Notification !== "undefined" ? Notification.permission : "default"
   );
 
   useEffect(() => {
-    localStorage.setItem("sofi-notif", JSON.stringify(prefs));
-  }, [prefs]);
+    if (!user?.id) return;
+    (async () => {
+      const { data } = await supabase
+        .from("notification_preferences")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (data) {
+        setPrefs({
+          task_reminders: data.task_reminders,
+          milestone_reminders: data.milestone_reminders,
+          browser_enabled: data.browser_enabled,
+          email_enabled: data.email_enabled,
+          daily_reminder: data.daily_reminder,
+          daily_time: (data.daily_time as string)?.slice(0, 5) || "08:00",
+          reminder_lead_hours: data.reminder_lead_hours,
+        });
+      }
+      setLoading(false);
+    })();
+  }, [user?.id]);
 
-  const update = <K extends keyof NotifPrefs>(k: K, v: NotifPrefs[K]) =>
+  useEffect(() => {
+    if (!user?.id || loading) return;
+    const t = setTimeout(async () => {
+      setSaving(true);
+      const { error } = await supabase
+        .from("notification_preferences")
+        .upsert({ user_id: user.id, ...prefs }, { onConflict: "user_id" });
+      setSaving(false);
+      if (error) toast.error("Couldn't save preferences");
+    }, 500);
+    return () => clearTimeout(t);
+  }, [prefs, user?.id, loading]);
+
+  const update = <K extends keyof typeof prefs>(k: K, v: typeof prefs[K]) =>
     setPrefs((p) => ({ ...p, [k]: v }));
 
   const handleBrowserToggle = async (v: boolean) => {
-    if (v && typeof Notification !== "undefined" && Notification.permission !== "granted") {
-      const result = await Notification.requestPermission();
-      setPerm(result);
-      if (result !== "granted") {
-        toast.error("Browser notifications blocked");
-        update("browserEnabled", false);
+    if (v && typeof Notification !== "undefined") {
+      try {
+        const result = await Notification.requestPermission();
+        setPerm(result);
+        if (result !== "granted") {
+          toast.error(
+            result === "denied"
+              ? "Notifications blocked — enable them from your browser's site settings (lock icon → Notifications → Allow)"
+              : "Permission not granted"
+          );
+          update("browser_enabled", false);
+          return;
+        }
+        new Notification("SOFI notifications enabled", {
+          body: "You'll receive reminders for tasks and milestones here.",
+          icon: "/favicon.ico",
+        });
+      } catch {
+        toast.error("Browser doesn't support notifications");
+        update("browser_enabled", false);
         return;
       }
     }
-    update("browserEnabled", v);
+    update("browser_enabled", v);
   };
+
+  const sendTestEmail = async () => {
+    if (!user?.id) return;
+    toast.info("Triggering reminder check…");
+    const { data, error } = await supabase.functions.invoke("send-reminders", {
+      body: { test: true, user_id: user.id },
+    });
+    if (error) toast.error(error.message);
+    else toast.success(data?.message || "Reminder run complete");
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground">
+        <Loader2 className="w-5 h-5 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -275,47 +353,66 @@ function NotificationsPanel() {
 
       <div className="space-y-3 rounded-xl border border-border bg-card divide-y divide-border">
         <Row title="Task due reminders" desc="Get notified when tasks are due">
-          <Switch checked={prefs.taskReminders} onCheckedChange={(v) => update("taskReminders", v)} />
+          <Switch checked={prefs.task_reminders} onCheckedChange={(v) => update("task_reminders", v)} />
         </Row>
         <Row title="Milestone due reminders" desc="Plan & milestone alerts">
-          <Switch checked={prefs.milestoneReminders} onCheckedChange={(v) => update("milestoneReminders", v)} />
+          <Switch checked={prefs.milestone_reminders} onCheckedChange={(v) => update("milestone_reminders", v)} />
         </Row>
         <Row
           title="Browser notifications"
           desc={
             <span className="flex items-center gap-2">
               Receive native popups
-              <Badge variant={perm === "granted" ? "default" : "secondary"} className="text-[10px]">
+              <Badge variant={perm === "granted" ? "default" : perm === "denied" ? "destructive" : "secondary"} className="text-[10px]">
                 {perm}
               </Badge>
             </span>
           }
         >
-          <Switch checked={prefs.browserEnabled} onCheckedChange={handleBrowserToggle} />
+          <Switch checked={prefs.browser_enabled} onCheckedChange={handleBrowserToggle} />
         </Row>
-        <Row title="Email notifications" desc="Emails sent daily at 8am">
-          <Switch checked={prefs.emailEnabled} onCheckedChange={(v) => update("emailEnabled", v)} />
+        <Row title="Email notifications" desc="Overdue and upcoming items emailed to you">
+          <Switch checked={prefs.email_enabled} onCheckedChange={(v) => update("email_enabled", v)} />
+        </Row>
+        <Row title="Reminder lead time" desc="How far ahead to remind you">
+          <Select
+            value={String(prefs.reminder_lead_hours)}
+            onValueChange={(v) => update("reminder_lead_hours", parseInt(v))}
+          >
+            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">1 hour</SelectItem>
+              <SelectItem value="6">6 hours</SelectItem>
+              <SelectItem value="12">12 hours</SelectItem>
+              <SelectItem value="24">1 day</SelectItem>
+              <SelectItem value="48">2 days</SelectItem>
+            </SelectContent>
+          </Select>
         </Row>
         <Row title="Daily study reminder" desc="A nudge at your chosen time">
           <div className="flex items-center gap-2">
             <Input
               type="time"
-              value={prefs.dailyTime}
-              onChange={(e) => update("dailyTime", e.target.value)}
+              value={prefs.daily_time}
+              onChange={(e) => update("daily_time", e.target.value)}
               className="w-28"
-              disabled={!prefs.dailyReminder}
+              disabled={!prefs.daily_reminder}
             />
-            <Switch checked={prefs.dailyReminder} onCheckedChange={(v) => update("dailyReminder", v)} />
+            <Switch checked={prefs.daily_reminder} onCheckedChange={(v) => update("daily_reminder", v)} />
           </div>
         </Row>
       </div>
 
-      <Button
-        variant="outline"
-        onClick={() => toast.success("Email notification system is active — you'll receive reminders at 8am daily")}
-      >
-        Test email notification
-      </Button>
+      <div className="flex items-center gap-3">
+        <Button variant="outline" onClick={sendTestEmail}>
+          Run reminders now
+        </Button>
+        {saving && (
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <Loader2 className="w-3 h-3 animate-spin" /> Saving…
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -418,9 +515,59 @@ function AiAssistantPanel() {
 
 /* ───────────── Privacy & Data ───────────── */
 
+type ExportFormat = "json" | "csv" | "markdown";
+
 function PrivacyPanel({ userId }: { userId?: string }) {
+  const [format, setFormat] = useState<ExportFormat>("csv");
+  const [exporting, setExporting] = useState(false);
+  const [signOutOpen, setSignOutOpen] = useState(false);
+
+  const downloadFile = (content: string, mime: string, ext: string) => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sofi-export-${new Date().toISOString().split("T")[0]}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const toCSV = (rows: any[]) => {
+    if (!rows?.length) return "";
+    const cols = Array.from(new Set(rows.flatMap((r) => Object.keys(r))));
+    const esc = (v: any) => {
+      if (v == null) return "";
+      const s = typeof v === "object" ? JSON.stringify(v) : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    return [cols.join(","), ...rows.map((r) => cols.map((c) => esc(r[c])).join(","))].join("\n");
+  };
+
+  const toMarkdown = (sections: Record<string, any[]>) => {
+    let out = `# SOFI Export\n\n_Exported ${new Date().toLocaleString()}_\n\n`;
+    for (const [name, rows] of Object.entries(sections)) {
+      out += `## ${name} (${rows?.length || 0})\n\n`;
+      if (!rows?.length) { out += "_None_\n\n"; continue; }
+      const cols = Array.from(new Set(rows.flatMap((r) => Object.keys(r))));
+      out += `| ${cols.join(" | ")} |\n| ${cols.map(() => "---").join(" | ")} |\n`;
+      for (const r of rows) {
+        out += `| ${cols.map((c) => {
+          const v = r[c];
+          if (v == null) return "";
+          const s = typeof v === "object" ? JSON.stringify(v) : String(v);
+          return s.replace(/\|/g, "\\|").replace(/\n/g, " ");
+        }).join(" | ")} |\n`;
+      }
+      out += "\n";
+    }
+    return out;
+  };
+
   const handleExport = async () => {
     try {
+      setExporting(true);
       toast.info("Preparing your export…");
       const [tasks, notes, plans, sessions] = await Promise.all([
         supabase.from("tasks").select("*"),
@@ -429,26 +576,33 @@ function PrivacyPanel({ userId }: { userId?: string }) {
         supabase.from("plan_sessions").select("*"),
       ]);
       if (tasks.error || notes.error || plans.error || sessions.error) throw new Error("Export failed");
-      const data = {
-        exportedAt: new Date().toISOString(),
-        userId,
-        tasks: tasks.data,
-        notes: notes.data,
-        plans: plans.data,
-        plan_sessions: sessions.data,
+      const sections = {
+        Tasks: tasks.data || [],
+        Notes: notes.data || [],
+        Plans: plans.data || [],
+        "Plan Sessions": sessions.data || [],
       };
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `sofi-export-${new Date().toISOString().split("T")[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+
+      if (format === "json") {
+        downloadFile(
+          JSON.stringify({ exportedAt: new Date().toISOString(), userId, ...sections }, null, 2),
+          "application/json",
+          "json"
+        );
+      } else if (format === "csv") {
+        // ZIP-like single multi-section CSV
+        const out = Object.entries(sections)
+          .map(([name, rows]) => `### ${name}\n${toCSV(rows)}`)
+          .join("\n\n");
+        downloadFile(out, "text/csv", "csv");
+      } else {
+        downloadFile(toMarkdown(sections), "text/markdown", "md");
+      }
       toast.success("Data exported");
     } catch (e: any) {
       toast.error(e.message || "Export failed");
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -456,23 +610,47 @@ function PrivacyPanel({ userId }: { userId?: string }) {
     const { error } = await supabase.auth.signOut({ scope: "global" });
     if (error) toast.error(error.message);
     else toast.success("Signed out of all devices");
+    setSignOutOpen(false);
   };
+
+  const formatIcon = format === "json" ? FileJson : format === "csv" ? TableIcon : FileText;
+  const FormatIcon = formatIcon;
 
   return (
     <div className="space-y-6">
       <SectionHeader icon={Shield} title="Privacy & Data" desc="Control your data and access" />
 
       <Card>
-        <div className="flex items-start justify-between gap-4">
+        <div className="space-y-4">
           <div>
             <h4 className="text-sm font-medium">Export my data</h4>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Download all your tasks, notes, plans and sessions as JSON.
+              Download all your tasks, notes, plans and sessions in your preferred format.
             </p>
           </div>
-          <Button variant="outline" onClick={handleExport} className="gap-2 shrink-0">
-            <Download className="w-4 h-4" /> Export
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="inline-flex rounded-lg border border-border p-1 bg-muted/30">
+              {([
+                { v: "csv" as const, label: "CSV", Icon: TableIcon },
+                { v: "markdown" as const, label: "Markdown", Icon: FileText },
+                { v: "json" as const, label: "JSON", Icon: FileJson },
+              ]).map(({ v, label, Icon }) => (
+                <button
+                  key={v}
+                  onClick={() => setFormat(v)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors ${
+                    format === v ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" /> {label}
+                </button>
+              ))}
+            </div>
+            <Button onClick={handleExport} disabled={exporting} className="gap-2">
+              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Export as {format.toUpperCase()}
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -512,9 +690,25 @@ function PrivacyPanel({ userId }: { userId?: string }) {
               End every active SOFI session across browsers and devices.
             </p>
           </div>
-          <Button variant="outline" onClick={signOutAll} className="gap-2 shrink-0">
-            <LogOut className="w-4 h-4" /> Sign out all
-          </Button>
+          <AlertDialog open={signOutOpen} onOpenChange={setSignOutOpen}>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="gap-2 shrink-0">
+                <LogOut className="w-4 h-4" /> Sign out all
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Sign out of every device?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  You'll need to sign in again on every browser and device where SOFI is currently open.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={signOutAll}>Sign out everywhere</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </Card>
     </div>
@@ -602,17 +796,109 @@ function AboutPanel() {
         </ul>
       </div>
 
-      <div className="space-y-2">
-        <h4 className="text-sm font-medium">Feedback</h4>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" asChild>
-            <a href="mailto:support@sofi.app?subject=Bug%20Report%20—%20SOFI">Report Bug</a>
-          </Button>
-          <Button variant="outline" asChild>
-            <a href="mailto:support@sofi.app?subject=Feature%20Suggestion%20—%20SOFI">Suggest Feature</a>
-          </Button>
+      <FeedbackForm />
+    </div>
+  );
+}
+
+function FeedbackForm() {
+  const { user } = useAuth();
+  const [category, setCategory] = useState<"bug" | "feature" | "general">("bug");
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [recent, setRecent] = useState<any[]>([]);
+
+  const loadRecent = async () => {
+    if (!user?.id) return;
+    const { data } = await supabase
+      .from("feedback_submissions")
+      .select("id, category, subject, status, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(3);
+    setRecent(data || []);
+  };
+
+  useEffect(() => { loadRecent(); }, [user?.id]);
+
+  const submit = async () => {
+    if (!user?.id) { toast.error("Please sign in"); return; }
+    if (!message.trim()) { toast.error("Add a description"); return; }
+    setSending(true);
+    const { error } = await supabase.from("feedback_submissions").insert({
+      user_id: user.id,
+      category,
+      subject: subject.trim() || `${category} report`,
+      message: message.trim(),
+    });
+    setSending(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Thanks for your feedback!");
+    setSubject(""); setMessage("");
+    loadRecent();
+  };
+
+  return (
+    <div className="space-y-3">
+      <h4 className="text-sm font-medium">Feedback</h4>
+      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <div className="flex gap-2">
+          {(["bug", "feature", "general"] as const).map((c) => (
+            <button
+              key={c}
+              onClick={() => setCategory(c)}
+              className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
+                category === c
+                  ? "border-primary bg-primary/10 text-primary font-medium"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {c === "bug" ? "🐛 Bug" : c === "feature" ? "✨ Feature" : "💬 General"}
+            </button>
+          ))}
         </div>
+        <Input
+          placeholder="Subject (optional)"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+        />
+        <Textarea
+          placeholder={
+            category === "bug"
+              ? "What went wrong? Include steps to reproduce."
+              : category === "feature"
+              ? "What would you like SOFI to do?"
+              : "Tell us what's on your mind…"
+          }
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          rows={4}
+        />
+        <Button onClick={submit} disabled={sending || !message.trim()} className="gap-2">
+          {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          Send feedback
+        </Button>
       </div>
+
+      {recent.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Your recent submissions</p>
+          <div className="space-y-1.5">
+            {recent.map((r) => (
+              <div key={r.id} className="flex items-center justify-between text-xs rounded-lg border border-border bg-card/50 px-3 py-2">
+                <div className="truncate">
+                  <span className="font-medium">{r.subject}</span>
+                  <span className="text-muted-foreground"> · {r.category}</span>
+                </div>
+                <Badge variant={r.status === "open" ? "secondary" : "default"} className="text-[10px]">
+                  {r.status}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
