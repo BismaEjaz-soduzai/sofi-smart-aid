@@ -19,6 +19,16 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function clearSofiLocalStorage() {
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith("sofi-"))
+      .forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // ignore storage access errors
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -57,7 +67,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     });
     if (error) return { error: error.message, needsConfirmation: false };
-    // With auto-confirm enabled the session is returned immediately; otherwise prompt verification.
     const needsConfirmation = !!data.user && !data.session;
     return { error: null, needsConfirmation };
   };
@@ -80,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    clearSofiLocalStorage();
   };
 
   return (

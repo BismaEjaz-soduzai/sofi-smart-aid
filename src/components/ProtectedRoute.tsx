@@ -1,8 +1,19 @@
+import { useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { session, loading } = useAuth();
+  const { session, user, loading, signOut } = useAuth();
+  const emailUnconfirmed =
+    !!user && user.app_metadata?.provider === "email" && !user.email_confirmed_at;
+
+  useEffect(() => {
+    if (emailUnconfirmed) {
+      toast.warning("Please verify your email before accessing SOFI.");
+      void signOut();
+    }
+  }, [emailUnconfirmed, signOut]);
 
   if (loading) {
     return (
@@ -13,5 +24,6 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   }
 
   if (!session) return <Navigate to="/login" replace />;
+  if (emailUnconfirmed) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
