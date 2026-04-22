@@ -32,13 +32,26 @@ type AiStyle = "concise" | "balanced" | "detailed";
 const ACCENTS = [
   { name: "Teal", value: "174 62% 40%" },
   { name: "Blue", value: "210 80% 55%" },
+  { name: "Indigo", value: "234 70% 60%" },
   { name: "Purple", value: "270 60% 55%" },
+  { name: "Pink", value: "330 75% 60%" },
   { name: "Rose", value: "340 65% 55%" },
+  { name: "Red", value: "0 70% 55%" },
+  { name: "Orange", value: "24 90% 55%" },
   { name: "Amber", value: "38 92% 50%" },
+  { name: "Yellow", value: "48 95% 50%" },
+  { name: "Lime", value: "85 65% 45%" },
   { name: "Green", value: "152 60% 42%" },
+  { name: "Emerald", value: "160 70% 40%" },
+  { name: "Cyan", value: "190 75% 45%" },
+  { name: "Slate", value: "215 20% 45%" },
 ];
 
 const FONT_PX: Record<FontSize, string> = { small: "14px", normal: "16px", large: "18px" };
+type Density = "compact" | "comfortable" | "spacious";
+const DENSITY_PAD: Record<Density, string> = { compact: "0.85", comfortable: "1", spacious: "1.15" };
+type Radius = "sharp" | "default" | "round";
+const RADIUS_REM: Record<Radius, string> = { sharp: "0.25rem", default: "0.5rem", round: "1rem" };
 
 function applyTheme(theme: Theme) {
   const root = document.documentElement;
