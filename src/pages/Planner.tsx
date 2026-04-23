@@ -6,8 +6,9 @@ import {
   Presentation, Library, X, Calendar as CalendarIcon, Target, TrendingUp,
   CheckCircle2, Clock, MoreHorizontal, Trash2, ChevronRight,
   Loader2, Send, LayoutList, LayoutGrid, CalendarDays, Edit3, Save, ArrowLeft,
-  AlertCircle, Bell, RefreshCw, Wand2, Brain, Check, Flame, Layers,
+  AlertCircle, Bell, RefreshCw, Wand2, Brain, Check, Flame, Layers, Star,
 } from "lucide-react";
+import { useRewards } from "@/hooks/useRewards";
 import { usePlans, useCreatePlan, useDeletePlan, useUpdatePlan, usePlanSessions, useCreateSession, useToggleSession, type Plan, type PlanInsert } from "@/hooks/usePlans";
 import { useTasks } from "@/hooks/useTasks";
 import { supabase } from "@/integrations/supabase/client";
@@ -123,7 +124,7 @@ function parseAiSessions(markdown: string, startDate: string | null): Array<{ ti
 }
 
 type View = "overview" | "create" | "ai-generate" | "plan-detail";
-type Tab = "board" | "list" | "calendar";
+type Tab = "board" | "calendar";
 
 const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } } };
 const item = { hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } };
@@ -145,6 +146,7 @@ export default function Planner() {
   const createSession = useCreateSession();
   const activity = useDailyActivity(7);
   const navigate = useNavigate();
+  const rewards = useRewards();
   const notifiedRef = useRef<Set<string>>(new Set());
   const [view, setView] = useState<View>("overview");
   const [tab, setTab] = useState<Tab>("board");
@@ -210,6 +212,27 @@ export default function Planner() {
   const completedPlans = plans.filter((p) => p.status === "completed");
   const avgProgress = plans.length ? Math.round(plans.reduce((a, p) => a + (p.progress || 0), 0) / plans.length) : 0;
 
+  const awardSessionXP = () => {
+    try {
+      const raw = localStorage.getItem("sofi_rewards");
+      const cur = raw ? JSON.parse(raw) : { xp: 0, sessions: 0, lastDate: "", streak: 0 };
+      const today = format(new Date(), "yyyy-MM-dd");
+      let streak = cur.streak || 0;
+      if (cur.lastDate !== today) {
+        const yesterday = format(new Date(Date.now() - 86400000), "yyyy-MM-dd");
+        streak = cur.lastDate === yesterday ? streak + 1 : 1;
+      }
+      const next = {
+        xp: (cur.xp || 0) + 30,
+        sessions: (cur.sessions || 0) + 1,
+        lastDate: today,
+        streak,
+      };
+      localStorage.setItem("sofi_rewards", JSON.stringify(next));
+      window.dispatchEvent(new CustomEvent("sofi-rewards-updated", { detail: next }));
+    } catch { /* noop */ }
+  };
+
   const toggleTodaySession = async (sessionId: string, planId: string) => {
     setAllSessions((cur) => cur.map((s) => s.id === sessionId ? { ...s, is_completed: true } : s));
     const { error } = await supabase.from("plan_sessions").update({ is_completed: true } as any).eq("id", sessionId);
@@ -225,7 +248,8 @@ export default function Planner() {
       const status = progress === 100 ? "completed" : "active";
       await supabase.from("plans").update({ progress, status } as any).eq("id", planId);
     }
-    toast.success("Nice — one down 🎯");
+    awardSessionXP();
+    toast.success("✅ Done! +30 XP 🎯");
   };
 
   // Milestone notifications — checks every hour and on plan changes
@@ -438,7 +462,6 @@ RULES YOU MUST FOLLOW:
         <div className="flex gap-1">
           {([
             { key: "board" as Tab, label: "Board", icon: LayoutGrid },
-            { key: "list" as Tab, label: "List", icon: LayoutList },
             { key: "calendar" as Tab, label: "Calendar", icon: CalendarDays },
           ]).map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)}
@@ -503,6 +526,7 @@ RULES YOU MUST FOLLOW:
                     { label: "Total Milestones", value: allSessions.length, icon: Layers, color: "text-info", bg: "bg-info/10" },
                     { label: "Completed this week", value: completedThisWeek, icon: CheckCircle2, color: "text-success", bg: "bg-success/10" },
                     { label: "Avg progress", value: `${avgProgress}%`, icon: TrendingUp, color: "text-warning", bg: "bg-warning/10" },
+                    { label: `Level ${rewards.level} · ${rewards.xp} XP`, value: "⭐", icon: Star, color: "text-info", bg: "bg-info/10" },
                   ].map((s) => (
                     <div key={s.label} className={`flex items-center gap-2 px-3 py-2 rounded-full border border-border ${s.bg} flex-shrink-0`}>
                       <s.icon className={`w-3.5 h-3.5 ${s.color}`} />
@@ -1328,7 +1352,22 @@ function PlanDetail({ plan, navigate, onBack, onDelete, onUpdate }: { plan: Plan
             onToggle={async (s) => {
               const willComplete = !s.is_completed;
               await toggleSession.mutateAsync({ id: s.id, is_completed: willComplete, plan_id: plan.id });
-              if (willComplete) toast.success("Milestone complete! 🎉");
+              if (willComplete) {
+                try {
+                  const raw = localStorage.getItem("sofi_rewards");
+                  const cur = raw ? JSON.parse(raw) : { xp: 0, sessions: 0, lastDate: "", streak: 0 };
+                  const today = format(new Date(), "yyyy-MM-dd");
+                  let streak = cur.streak || 0;
+                  if (cur.lastDate !== today) {
+                    const yesterday = format(new Date(Date.now() - 86400000), "yyyy-MM-dd");
+                    streak = cur.lastDate === yesterday ? streak + 1 : 1;
+                  }
+                  const next = { xp: (cur.xp || 0) + 30, sessions: (cur.sessions || 0) + 1, lastDate: today, streak };
+                  localStorage.setItem("sofi_rewards", JSON.stringify(next));
+                  window.dispatchEvent(new CustomEvent("sofi-rewards-updated", { detail: next }));
+                } catch { /* noop */ }
+                toast.success("✅ Done! +30 XP 🎯");
+              }
             }}
             onQuickAddDate={(date) => { setSessionForm({ title: "", date, note: "" }); setShowAdd(true); }}
           />

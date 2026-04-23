@@ -1,9 +1,14 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AppHeader } from "@/components/AppHeader";
 import { Outlet } from "react-router-dom";
+import { AnimatePresence } from "framer-motion";
 import VoiceNavigator from "@/components/VoiceNavigator";
+import { GlobalCallNotifier } from "@/components/GlobalCallNotifier";
+import CallBar from "@/components/chat/CallBar";
+import { useCallContext } from "@/contexts/CallContext";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -88,18 +93,64 @@ export default function AppLayout() {
     };
   }, [session, signOut]);
 
+  // ===== Global call bar (visible on every protected page during a call) =====
+  const call = useCallContext();
+  const [callElapsed, setCallElapsed] = useState(0);
+  useEffect(() => {
+    if (!call.activeCall) { setCallElapsed(0); return; }
+    const start = call.activeCall.startedAt;
+    const tick = () => setCallElapsed(Math.floor((Date.now() - start) / 1000));
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [call.activeCall]);
+
+  const handleSaveGlobalRecording = async (blob: Blob, filename: string) => {
+    try {
+      const path = `recordings/${session?.user?.id || "anon"}/${filename}`;
+      const { error } = await supabase.storage.from("chat-files").upload(path, blob, {
+        contentType: "video/webm",
+        upsert: false,
+      });
+      if (error) throw error;
+      toast.success("Recording saved");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to save recording");
+    }
+  };
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <AppHeader />
+          <AnimatePresence>
+            {call.activeCall && (
+              <CallBar
+                callUrl={call.activeCall.callUrl}
+                isVideo={call.activeCall.isVideo}
+                startedBy={call.activeCall.startedBy}
+                elapsed={callElapsed}
+                isRecording={call.isRecording}
+                recordingTime={call.recordingTime}
+                formatRecTime={call.formatRecTime}
+                onReopen={call.focusCall}
+                onEnd={call.endCall}
+                onStartRecording={() => call.startRecording(handleSaveGlobalRecording)}
+                onStopRecording={call.stopRecording}
+              />
+            )}
+          </AnimatePresence>
           <main className="flex-1 overflow-auto">
             <Outlet />
           </main>
         </div>
         <VoiceNavigator />
+        <GlobalCallNotifier />
       </div>
     </SidebarProvider>
   );
 }
+

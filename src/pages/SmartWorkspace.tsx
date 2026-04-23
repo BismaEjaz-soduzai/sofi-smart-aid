@@ -11,10 +11,7 @@ import {
 } from "lucide-react";
 import { useStudyFiles, useWorkspaceRooms, StudyFile } from "@/hooks/useStudyFiles";
 import { useRoomMessages, useSendRoomMessage, useUploadRoomFile } from "@/hooks/useRoomChat";
-import { useCallSignal } from "@/hooks/useCallSignal";
-import { useIncomingCallNotifier } from "@/hooks/useIncomingCallNotifier";
-import CallBar from "@/components/chat/CallBar";
-import JitsiCallPanel from "@/components/chat/JitsiCallPanel";
+import { useCallContext } from "@/contexts/CallContext";
 import VoiceMicButton from "@/components/VoiceMicButton";
 import { useRoomLinks, getYouTubeEmbedUrl, getYouTubeThumbnail } from "@/hooks/useRoomLinks";
 import { useRoomRecordings } from "@/hooks/useRoomRecordings";
@@ -447,12 +444,8 @@ export default function SmartWorkspace() {
   const [activeRoomId, setActiveRoomId] = useState<string | undefined>(undefined);
   const activeRoom = rooms.find((r) => r.id === activeRoomId);
 
-  // ===== Room chat / call state =====
-  const roomCall = useCallSignal(activeRoomId || "no-room");
-  const [callMinimized, setCallMinimized] = useState(false);
-  useEffect(() => {
-    if (roomCall.activeCall) setCallMinimized(false);
-  }, [roomCall.activeCall?.callUrl]);
+  // ===== Room chat / call state (call lives in global CallContext) =====
+  const roomCall = useCallContext();
   const { messages: roomMessages } = useRoomMessages(activeRoomId);
   const sendRoomMessage = useSendRoomMessage();
   const uploadRoomFile = useUploadRoomFile();
@@ -478,13 +471,6 @@ export default function SmartWorkspace() {
     }
   }, [roomMessages.length]);
 
-  // Ring + toast on incoming room calls
-  useIncomingCallNotifier(
-    roomMessages as any,
-    user?.id,
-    (callUrl) => roomCall.joinCall(callUrl),
-    !!roomCall.activeCall,
-  );
 
   const handleStartRoomCall = (isVideo: boolean) => {
     if (!activeRoomId) return;
@@ -880,38 +866,8 @@ export default function SmartWorkspace() {
         )}
       </AnimatePresence>
 
-      {/* Active call bar + embedded Jitsi panel */}
-      <AnimatePresence>
-        {activeRoom && roomCall.activeCall && (
-          <CallBar
-            callUrl={roomCall.activeCall.callUrl}
-            isVideo={roomCall.activeCall.isVideo}
-            startedBy={roomCall.activeCall.startedBy}
-            elapsed={callElapsed}
-            isRecording={roomCall.isRecording}
-            recordingTime={roomCall.recordingTime}
-            formatRecTime={roomCall.formatRecTime}
-            onReopen={callMinimized ? () => setCallMinimized(false) : undefined}
-            onEnd={() => { setCallMinimized(false); roomCall.endCall(); }}
-            onStartRecording={() => roomCall.startRecording(async (blob, filename) => {
-              await handleSaveRoomRecording(blob, filename);
-              refetchRecordings();
-            })}
-            onStopRecording={roomCall.stopRecording}
-          />
-        )}
-      </AnimatePresence>
-      {activeRoom && roomCall.activeCall && (
-        <JitsiCallPanel
-          roomName={roomCall.activeCall.roomName}
-          callUrl={roomCall.activeCall.callUrl}
-          isVideo={roomCall.activeCall.isVideo}
-          displayName={myName}
-          onLeave={() => { setCallMinimized(false); roomCall.endCall(); }}
-          onMinimize={() => setCallMinimized(true)}
-          isMinimized={callMinimized}
-        />
-      )}
+      {/* Call UI is rendered globally in AppLayout (CallBar) and as a Jitsi popup window. */}
+
 
 
       {/* Room creation modal */}

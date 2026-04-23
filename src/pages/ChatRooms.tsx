@@ -16,12 +16,9 @@ import {
 } from "@/hooks/useChat";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useReadReceipts } from "@/hooks/useReadReceipts";
-import { useCallSignal } from "@/hooks/useCallSignal";
-import { useIncomingCallNotifier } from "@/hooks/useIncomingCallNotifier";
+import { useCallContext } from "@/contexts/CallContext";
 import { usePresence } from "@/hooks/usePresence";
 import { useReactions } from "@/hooks/useReactions";
-import CallBar from "@/components/chat/CallBar";
-import JitsiCallPanel from "@/components/chat/JitsiCallPanel";
 import VoiceMicButton from "@/components/VoiceMicButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -218,13 +215,8 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   const uploadFile = useUploadChatFile();
   const { typingUsers, sendTyping, stopTyping } = useTypingIndicator(room.id);
   const { markAsRead } = useReadReceipts();
-  const call = useCallSignal(room.id);
+  const call = useCallContext();
   const [callElapsed, setCallElapsed] = useState(0);
-  const [callMinimized, setCallMinimized] = useState(false);
-  // Reset minimize state whenever a new call starts
-  useEffect(() => {
-    if (call.activeCall) setCallMinimized(false);
-  }, [call.activeCall?.callUrl]);
   const editMessage = useEditMessage();
   const deleteMessage = useDeleteMessage();
   const { isOnline } = usePresence(room.id);
@@ -365,35 +357,8 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   return (
     <>
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Active call bar + embedded Jitsi panel */}
-        <AnimatePresence>
-          {call.activeCall && (
-            <CallBar
-              callUrl={call.activeCall.callUrl}
-              isVideo={call.activeCall.isVideo}
-              startedBy={call.activeCall.startedBy}
-              elapsed={callElapsed}
-              isRecording={call.isRecording}
-              recordingTime={call.recordingTime}
-              formatRecTime={call.formatRecTime}
-              onReopen={callMinimized ? () => setCallMinimized(false) : undefined}
-              onEnd={() => { setCallMinimized(false); call.endCall(); }}
-              onStartRecording={() => call.startRecording(handleSaveRecording)}
-              onStopRecording={call.stopRecording}
-            />
-          )}
-        </AnimatePresence>
-        {call.activeCall && (
-          <JitsiCallPanel
-            roomName={call.activeCall.roomName}
-            callUrl={call.activeCall.callUrl}
-            isVideo={call.activeCall.isVideo}
-            displayName={memberMap.get(userId) || "Guest"}
-            onLeave={() => { setCallMinimized(false); call.endCall(); }}
-            onMinimize={() => setCallMinimized(true)}
-            isMinimized={callMinimized}
-          />
-        )}
+        {/* Call UI lives globally in AppLayout (CallBar) and a Jitsi popup window. */}
+
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/60 backdrop-blur-sm flex-shrink-0">
@@ -467,14 +432,26 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
             {messages.map((msg) => {
               // Render system messages with embedded call URL specially
               if (msg.message_type === "system" && msg.content.includes("||CALL_URL:")) {
-                const [displayText, callUrl] = msg.content.split("||CALL_URL:");
+                const callUrl = msg.content.split("||CALL_URL:")[1]?.trim() || "";
+                const displayText = msg.content.split("||CALL_URL:")[0].trim();
+                const callerName = memberMap.get(msg.user_id) || "Someone";
+                const myName = memberMap.get(userId) || "Guest";
                 return (
                   <div key={msg.id} className="flex justify-center">
-                    <div className="flex items-center gap-2 bg-muted/60 border border-border rounded-full px-3 py-1.5">
-                      <span className="text-[11px] text-muted-foreground">{displayText}</span>
+                    <div className="flex items-center justify-between gap-3 bg-success/5 border border-success/20 rounded-2xl px-4 py-3 w-full max-w-md">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+                          <span className="absolute inline-flex h-full w-full rounded-full bg-success opacity-75 animate-ping" />
+                          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-success" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-foreground truncate">{callerName}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">{displayText}</p>
+                        </div>
+                      </div>
                       <button
-                        onClick={() => call.joinCall(callUrl)}
-                        className="text-[11px] font-semibold bg-success text-success-foreground hover:opacity-90 rounded-full px-2.5 py-0.5 transition-opacity"
+                        onClick={() => call.joinCall(callUrl, myName)}
+                        className="text-xs font-semibold bg-success text-success-foreground hover:opacity-90 rounded-full px-3 py-1.5 transition-opacity flex-shrink-0"
                       >
                         📞 Join Call
                       </button>
