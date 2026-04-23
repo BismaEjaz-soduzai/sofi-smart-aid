@@ -526,6 +526,7 @@ RULES YOU MUST FOLLOW:
                     { label: "Total Milestones", value: allSessions.length, icon: Layers, color: "text-info", bg: "bg-info/10" },
                     { label: "Completed this week", value: completedThisWeek, icon: CheckCircle2, color: "text-success", bg: "bg-success/10" },
                     { label: "Avg progress", value: `${avgProgress}%`, icon: TrendingUp, color: "text-warning", bg: "bg-warning/10" },
+                    { label: `Level ${rewards.level} · ${rewards.xp} XP`, value: "⭐", icon: Star, color: "text-info", bg: "bg-info/10" },
                   ].map((s) => (
                     <div key={s.label} className={`flex items-center gap-2 px-3 py-2 rounded-full border border-border ${s.bg} flex-shrink-0`}>
                       <s.icon className={`w-3.5 h-3.5 ${s.color}`} />
@@ -1351,7 +1352,22 @@ function PlanDetail({ plan, navigate, onBack, onDelete, onUpdate }: { plan: Plan
             onToggle={async (s) => {
               const willComplete = !s.is_completed;
               await toggleSession.mutateAsync({ id: s.id, is_completed: willComplete, plan_id: plan.id });
-              if (willComplete) toast.success("Milestone complete! 🎉");
+              if (willComplete) {
+                try {
+                  const raw = localStorage.getItem("sofi_rewards");
+                  const cur = raw ? JSON.parse(raw) : { xp: 0, sessions: 0, lastDate: "", streak: 0 };
+                  const today = format(new Date(), "yyyy-MM-dd");
+                  let streak = cur.streak || 0;
+                  if (cur.lastDate !== today) {
+                    const yesterday = format(new Date(Date.now() - 86400000), "yyyy-MM-dd");
+                    streak = cur.lastDate === yesterday ? streak + 1 : 1;
+                  }
+                  const next = { xp: (cur.xp || 0) + 30, sessions: (cur.sessions || 0) + 1, lastDate: today, streak };
+                  localStorage.setItem("sofi_rewards", JSON.stringify(next));
+                  window.dispatchEvent(new CustomEvent("sofi-rewards-updated", { detail: next }));
+                } catch { /* noop */ }
+                toast.success("✅ Done! +30 XP 🎯");
+              }
             }}
             onQuickAddDate={(date) => { setSessionForm({ title: "", date, note: "" }); setShowAdd(true); }}
           />
