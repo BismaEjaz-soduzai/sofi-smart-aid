@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, X, Send, MessageSquare, Volume2, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
+import { recognizeIntent } from "@/utils/intentRecognizer";
 import ReactMarkdown from "react-markdown";
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/study-chat`;
@@ -12,6 +14,7 @@ type Mode = "voice" | "text";
 interface Msg { id: string; role: "user" | "assistant"; content: string; }
 
 export function GlobalVoiceButton() {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("voice");
   const [listening, setListening] = useState(false);
@@ -46,6 +49,23 @@ export function GlobalVoiceButton() {
     setMessages(next);
     setInput("");
     setThinking(true);
+
+    // Try local + AI intent recognition first — navigate if confident
+    try {
+      const intent = await recognizeIntent(text.trim());
+      if (intent.route && (intent.confidence === "high" || intent.confidence === "medium")) {
+        const ack = `✅ Opening ${intent.name || "page"}…`;
+        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: ack }]);
+        if (voiceMode) speak(ack);
+        navigate(intent.route);
+        setOpen(false);
+        setThinking(false);
+        return;
+      }
+    } catch (err) {
+      console.warn("Intent recognition failed, falling back to AI", err);
+    }
+
     let assistant = "";
     try {
       const resp = await fetch(CHAT_URL, {
