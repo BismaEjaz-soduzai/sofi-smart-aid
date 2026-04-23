@@ -215,13 +215,8 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
   const uploadFile = useUploadChatFile();
   const { typingUsers, sendTyping, stopTyping } = useTypingIndicator(room.id);
   const { markAsRead } = useReadReceipts();
-  const call = useCallSignal(room.id);
+  const call = useCallContext();
   const [callElapsed, setCallElapsed] = useState(0);
-  const [callMinimized, setCallMinimized] = useState(false);
-  // Reset minimize state whenever a new call starts
-  useEffect(() => {
-    if (call.activeCall) setCallMinimized(false);
-  }, [call.activeCall?.callUrl]);
   const editMessage = useEditMessage();
   const deleteMessage = useDeleteMessage();
   const { isOnline } = usePresence(room.id);
