@@ -33,6 +33,7 @@ import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { playMessageSound, showBrowserNotification } from "@/lib/notificationSounds";
 import { supabase } from "@/integrations/supabase/client";
+import { CallSystemBanner, parseCallSystemMessage } from "@/components/chat/CallSystemBanner";
 
 const EMOJI_LIST = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "💯"];
 

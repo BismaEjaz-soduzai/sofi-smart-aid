@@ -23,6 +23,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
 import ReactMarkdown from "react-markdown";
+import { CallSystemBanner, parseCallSystemMessage } from "@/components/chat/CallSystemBanner";
 
 const FILE_ICONS: Record<string, typeof FileText> = {
   PDF: FileText, DOCX: File, PPT: Presentation, PPTX: Presentation, TXT: FileType,
@@ -1115,19 +1116,22 @@ export default function SmartWorkspace() {
                   roomMessages.map((m) => {
                     const mine = m.user_id === user?.id;
                     if (m.message_type === "system") {
-                      const [displayText, callPart] = m.content.split("||CALL_URL:");
-                      const callUrl = callPart || null;
+                      const parsed = parseCallSystemMessage(m.content);
+                      if (parsed.isCall && parsed.callUrl) {
+                        return (
+                          <CallSystemBanner
+                            key={m.id}
+                            variant="inline"
+                            callerName={m.sender_name || "Someone"}
+                            displayText={parsed.displayText}
+                            callUrl={parsed.callUrl}
+                            onJoin={(url) => roomCall.joinCall(url)}
+                          />
+                        );
+                      }
                       return (
-                        <div key={m.id} className="flex items-center justify-center gap-2 py-1">
-                          <span className="text-[11px] text-muted-foreground bg-muted/60 rounded-full px-3 py-1">{displayText}</span>
-                          {callUrl && (
-                            <button
-                              onClick={() => roomCall.joinCall(callUrl)}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-success text-success-foreground text-[11px] font-semibold hover:opacity-90 transition-opacity"
-                            >
-                              📞 Join Call
-                            </button>
-                          )}
+                        <div key={m.id} className="flex items-center justify-center py-1">
+                          <span className="text-[11px] text-muted-foreground bg-muted/60 rounded-full px-3 py-1">{parsed.displayText}</span>
                         </div>
                       );
                     }
