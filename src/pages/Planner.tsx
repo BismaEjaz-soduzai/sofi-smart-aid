@@ -9,6 +9,7 @@ import {
   AlertCircle, Bell, RefreshCw, Wand2, Brain, Check, Flame, Layers, Star,
 } from "lucide-react";
 import { useRewards } from "@/hooks/useRewards";
+import { awardXpOnce, revokeXpKey } from "@/hooks/useRewardLedger";
 import { usePlans, useCreatePlan, useDeletePlan, useUpdatePlan, usePlanSessions, useCreateSession, useToggleSession, type Plan, type PlanInsert } from "@/hooks/usePlans";
 import { useTasks } from "@/hooks/useTasks";
 import { supabase } from "@/integrations/supabase/client";
