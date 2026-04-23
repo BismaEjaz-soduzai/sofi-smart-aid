@@ -9,6 +9,7 @@ import {
   AlertCircle, Bell, RefreshCw, Wand2, Brain, Check, Flame, Layers, Star,
 } from "lucide-react";
 import { useRewards } from "@/hooks/useRewards";
+import { awardXpOnce, revokeXpKey } from "@/hooks/useRewardLedger";
 import { usePlans, useCreatePlan, useDeletePlan, useUpdatePlan, usePlanSessions, useCreateSession, useToggleSession, type Plan, type PlanInsert } from "@/hooks/usePlans";
 import { useTasks } from "@/hooks/useTasks";
 import { supabase } from "@/integrations/supabase/client";
@@ -212,25 +213,8 @@ export default function Planner() {
   const completedPlans = plans.filter((p) => p.status === "completed");
   const avgProgress = plans.length ? Math.round(plans.reduce((a, p) => a + (p.progress || 0), 0) / plans.length) : 0;
 
-  const awardSessionXP = () => {
-    try {
-      const raw = localStorage.getItem("sofi_rewards");
-      const cur = raw ? JSON.parse(raw) : { xp: 0, sessions: 0, lastDate: "", streak: 0 };
-      const today = format(new Date(), "yyyy-MM-dd");
-      let streak = cur.streak || 0;
-      if (cur.lastDate !== today) {
-        const yesterday = format(new Date(Date.now() - 86400000), "yyyy-MM-dd");
-        streak = cur.lastDate === yesterday ? streak + 1 : 1;
-      }
-      const next = {
-        xp: (cur.xp || 0) + 30,
-        sessions: (cur.sessions || 0) + 1,
-        lastDate: today,
-        streak,
-      };
-      localStorage.setItem("sofi_rewards", JSON.stringify(next));
-      window.dispatchEvent(new CustomEvent("sofi-rewards-updated", { detail: next }));
-    } catch { /* noop */ }
+  const awardSessionXP = (sessionId: string) => {
+    awardXpOnce(`session:${sessionId}`, 30);
   };
 
   const toggleTodaySession = async (sessionId: string, planId: string) => {
@@ -248,8 +232,8 @@ export default function Planner() {
       const status = progress === 100 ? "completed" : "active";
       await supabase.from("plans").update({ progress, status } as any).eq("id", planId);
     }
-    awardSessionXP();
-    toast.success("✅ Done! +30 XP 🎯");
+    const awarded = awardXpOnce(`session:${sessionId}`, 30);
+    toast.success(awarded ? "✅ Done! +30 XP 🎯" : "✅ Done!");
   };
 
   // Milestone notifications — checks every hour and on plan changes
@@ -1353,20 +1337,10 @@ function PlanDetail({ plan, navigate, onBack, onDelete, onUpdate }: { plan: Plan
               const willComplete = !s.is_completed;
               await toggleSession.mutateAsync({ id: s.id, is_completed: willComplete, plan_id: plan.id });
               if (willComplete) {
-                try {
-                  const raw = localStorage.getItem("sofi_rewards");
-                  const cur = raw ? JSON.parse(raw) : { xp: 0, sessions: 0, lastDate: "", streak: 0 };
-                  const today = format(new Date(), "yyyy-MM-dd");
-                  let streak = cur.streak || 0;
-                  if (cur.lastDate !== today) {
-                    const yesterday = format(new Date(Date.now() - 86400000), "yyyy-MM-dd");
-                    streak = cur.lastDate === yesterday ? streak + 1 : 1;
-                  }
-                  const next = { xp: (cur.xp || 0) + 30, sessions: (cur.sessions || 0) + 1, lastDate: today, streak };
-                  localStorage.setItem("sofi_rewards", JSON.stringify(next));
-                  window.dispatchEvent(new CustomEvent("sofi-rewards-updated", { detail: next }));
-                } catch { /* noop */ }
-                toast.success("✅ Done! +30 XP 🎯");
+                const awarded = awardXpOnce(`session:${s.id}`, 30);
+                toast.success(awarded ? "✅ Done! +30 XP 🎯" : "✅ Done!");
+              } else {
+                revokeXpKey(`session:${s.id}`);
               }
             }}
             onQuickAddDate={(date) => { setSessionForm({ title: "", date, note: "" }); setShowAdd(true); }}

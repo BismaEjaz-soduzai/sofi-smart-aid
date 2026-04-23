@@ -13,6 +13,8 @@ type Mode = "voice" | "text";
 
 interface Msg { id: string; role: "user" | "assistant"; content: string; }
 
+const INTENT_NAV_KEY = "sofi-voice-intent-nav";
+
 export function GlobalVoiceButton() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -22,8 +24,15 @@ export function GlobalVoiceButton() {
   const [speaking, setSpeaking] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [intentNav, setIntentNav] = useState<boolean>(() => {
+    try { return localStorage.getItem(INTENT_NAV_KEY) !== "0"; } catch { return true; }
+  });
   const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try { localStorage.setItem(INTENT_NAV_KEY, intentNav ? "1" : "0"); } catch { /* noop */ }
+  }, [intentNav]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -50,20 +59,22 @@ export function GlobalVoiceButton() {
     setInput("");
     setThinking(true);
 
-    // Try local + AI intent recognition first — navigate if confident
-    try {
-      const intent = await recognizeIntent(text.trim());
-      if (intent.route && (intent.confidence === "high" || intent.confidence === "medium")) {
-        const ack = `✅ Opening ${intent.name || "page"}…`;
-        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: ack }]);
-        if (voiceMode) speak(ack);
-        navigate(intent.route);
-        setOpen(false);
-        setThinking(false);
-        return;
+    // Try local + AI intent recognition first — navigate if confident (when enabled)
+    if (intentNav) {
+      try {
+        const intent = await recognizeIntent(text.trim());
+        if (intent.route && (intent.confidence === "high" || intent.confidence === "medium")) {
+          const ack = `✅ Opening ${intent.name || "page"}…`;
+          setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: ack }]);
+          if (voiceMode) speak(ack);
+          navigate(intent.route);
+          setOpen(false);
+          setThinking(false);
+          return;
+        }
+      } catch (err) {
+        console.warn("Intent recognition failed, falling back to AI", err);
       }
-    } catch (err) {
-      console.warn("Intent recognition failed, falling back to AI", err);
     }
 
     let assistant = "";
@@ -170,6 +181,15 @@ export function GlobalVoiceButton() {
                   <span className="text-sm font-semibold text-foreground">Quick SOFI</span>
                 </div>
                 <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setIntentNav((v) => !v)}
+                    title={intentNav ? "Voice navigation: ON (click to disable)" : "Voice navigation: OFF (click to enable)"}
+                    className={`text-[10px] font-medium px-2 py-1 rounded-md transition-colors ${
+                      intentNav ? "bg-primary/15 text-primary hover:bg-primary/25" : "bg-muted text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Nav: {intentNav ? "On" : "Off"}
+                  </button>
                   <button
                     onClick={() => setMode(mode === "voice" ? "text" : "voice")}
                     className="text-[10px] font-medium px-2 py-1 rounded-md bg-muted text-muted-foreground hover:text-foreground transition-colors"

@@ -89,8 +89,33 @@ export function useCallSignal(roomId: string) {
         "sofi-call",
         "width=1280,height=720,toolbar=no,menubar=no,location=no,status=no,resizable=yes",
       );
-      if (!popup) {
-        toast.error("Popup was blocked. Allow popups to start the call.");
+      if (!popup || popup.closed || typeof popup.closed === "undefined") {
+        toast.error("Popup was blocked", {
+          description: "Allow popups for this site, then click Retry.",
+          duration: 15_000,
+          action: {
+            label: "Retry",
+            onClick: () => {
+              const retry = window.open(
+                url,
+                "sofi-call",
+                "width=1280,height=720,toolbar=no,menubar=no,location=no,status=no,resizable=yes",
+              );
+              if (!retry) {
+                toast.error("Still blocked. Open the call link manually.", {
+                  action: {
+                    label: "Open link",
+                    onClick: () => window.open(url, "_blank", "noopener,noreferrer"),
+                  },
+                });
+                return;
+              }
+              popupRef.current = retry;
+              try { retry.focus(); } catch { /* noop */ }
+              watchPopup();
+            },
+          },
+        });
         return null;
       }
       popupRef.current = popup;

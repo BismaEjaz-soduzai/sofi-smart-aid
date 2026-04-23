@@ -23,6 +23,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
 import ReactMarkdown from "react-markdown";
+import { CallSystemBanner, parseCallSystemMessage } from "@/components/chat/CallSystemBanner";
 
 const FILE_ICONS: Record<string, typeof FileText> = {
   PDF: FileText, DOCX: File, PPT: Presentation, PPTX: Presentation, TXT: FileType,
@@ -434,6 +435,67 @@ async function getSignedUrl(file: StudyFile): Promise<string | null> {
 
 function getOfficeViewerUrl(url: string) {
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
+}
+
+/**
+ * Open a remote file in a new tab so it displays INLINE (preview), never
+ * forcing a download. We fetch the bytes, infer a sensible MIME type from
+ * the file name, then open a blob URL so the browser previews it.
+ */
+function inferMime(name: string, fallback?: string): string {
+  const ext = name.split(".").pop()?.toLowerCase() || "";
+  const map: Record<string, string> = {
+    pdf: "application/pdf",
+    txt: "text/plain",
+    md: "text/markdown",
+    csv: "text/csv",
+    json: "application/json",
+    html: "text/html",
+    htm: "text/html",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+    mp4: "video/mp4",
+    webm: "video/webm",
+    mp3: "audio/mpeg",
+    wav: "audio/wav",
+  };
+  return map[ext] || fallback || "application/octet-stream";
+}
+
+async function openFileInNewTabInline(url: string, name: string): Promise<void> {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const original = await resp.blob();
+    // Re-wrap the blob with an inline-friendly mime so the browser previews
+    // instead of downloading. Office docs (.docx/.pptx) cannot preview natively
+    // — for those, fall back to the Office Viewer.
+    const ext = name.split(".").pop()?.toLowerCase() || "";
+    if (["docx", "doc", "pptx", "ppt", "xlsx", "xls"].includes(ext)) {
+      window.open(getOfficeViewerUrl(url), "_blank", "noopener,noreferrer");
+      return;
+    }
+    const mime = inferMime(name, original.type);
+    const blob = new Blob([original], { type: mime });
+    const objUrl = URL.createObjectURL(blob);
+    const w = window.open(objUrl, "_blank", "noopener,noreferrer");
+    if (!w) {
+      toast.error("Popup was blocked", {
+        description: "Allow popups to preview files in a new tab.",
+        action: { label: "Retry", onClick: () => window.open(objUrl, "_blank", "noopener,noreferrer") },
+      });
+      return;
+    }
+    // Revoke the URL after a delay so the new tab has time to load
+    setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
+  } catch (err) {
+    console.error("Open in new tab failed", err);
+    toast.error("Could not open file in new tab");
+  }
 }
 
 export default function SmartWorkspace() {
@@ -1115,19 +1177,22 @@ export default function SmartWorkspace() {
                   roomMessages.map((m) => {
                     const mine = m.user_id === user?.id;
                     if (m.message_type === "system") {
-                      const [displayText, callPart] = m.content.split("||CALL_URL:");
-                      const callUrl = callPart || null;
+                      const parsed = parseCallSystemMessage(m.content);
+                      if (parsed.isCall && parsed.callUrl) {
+                        return (
+                          <CallSystemBanner
+                            key={m.id}
+                            variant="inline"
+                            callerName={m.sender_name || "Someone"}
+                            displayText={parsed.displayText}
+                            callUrl={parsed.callUrl}
+                            onJoin={(url) => roomCall.joinCall(url)}
+                          />
+                        );
+                      }
                       return (
-                        <div key={m.id} className="flex items-center justify-center gap-2 py-1">
-                          <span className="text-[11px] text-muted-foreground bg-muted/60 rounded-full px-3 py-1">{displayText}</span>
-                          {callUrl && (
-                            <button
-                              onClick={() => roomCall.joinCall(callUrl)}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-success text-success-foreground text-[11px] font-semibold hover:opacity-90 transition-opacity"
-                            >
-                              📞 Join Call
-                            </button>
-                          )}
+                        <div key={m.id} className="flex items-center justify-center py-1">
+                          <span className="text-[11px] text-muted-foreground bg-muted/60 rounded-full px-3 py-1">{parsed.displayText}</span>
                         </div>
                       );
                     }
@@ -1464,8 +1529,16 @@ export default function SmartWorkspace() {
                 <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{viewingFile.type}</span>
               </div>
               <div className="flex items-center gap-2">
-                 <a href={viewingFile.sourceUrl || viewingFile.url} download={viewingFile.name} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"><Download className="w-3.5 h-3.5" /> Download</a>
-                 <a href={viewingFile.sourceUrl || viewingFile.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"><Eye className="w-3.5 h-3.5" /> New Tab</a>
+                 <a href={viewingFile.sourceUrl || viewingFile.url || "#"} download={viewingFile.name} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"><Download className="w-3.5 h-3.5" /> Download</a>
+                 <button
+                   onClick={() => {
+                     const u = viewingFile.sourceUrl || viewingFile.url;
+                     if (u) openFileInNewTabInline(u, viewingFile.name);
+                   }}
+                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                 >
+                   <Eye className="w-3.5 h-3.5" /> New Tab
+                 </button>
                 <button onClick={() => setViewingFile(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"><X className="w-5 h-5" /></button>
               </div>
             </div>
@@ -1485,9 +1558,15 @@ export default function SmartWorkspace() {
                         </p>
                       </div>
                       {(viewingFile.sourceUrl || viewingFile.url) && (
-                        <a href={viewingFile.sourceUrl || viewingFile.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
+                        <button
+                          onClick={() => {
+                            const u = viewingFile.sourceUrl || viewingFile.url;
+                            if (u) openFileInNewTabInline(u, viewingFile.name);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                        >
                           <ExternalLink className="w-3.5 h-3.5" /> Open in new tab
-                        </a>
+                        </button>
                       )}
                     </div>
                     {viewingFile.previewMode === "office" && viewingFile.url && (
