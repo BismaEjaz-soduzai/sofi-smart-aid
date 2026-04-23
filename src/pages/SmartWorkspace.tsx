@@ -12,8 +12,6 @@ import {
 import { useStudyFiles, useWorkspaceRooms, StudyFile } from "@/hooks/useStudyFiles";
 import { useRoomMessages, useSendRoomMessage, useUploadRoomFile } from "@/hooks/useRoomChat";
 import { useCallContext } from "@/contexts/CallContext";
-import CallBar from "@/components/chat/CallBar";
-import JitsiCallPanel from "@/components/chat/JitsiCallPanel";
 import VoiceMicButton from "@/components/VoiceMicButton";
 import { useRoomLinks, getYouTubeEmbedUrl, getYouTubeThumbnail } from "@/hooks/useRoomLinks";
 import { useRoomRecordings } from "@/hooks/useRoomRecordings";
