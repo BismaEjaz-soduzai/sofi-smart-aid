@@ -866,38 +866,8 @@ export default function SmartWorkspace() {
         )}
       </AnimatePresence>
 
-      {/* Active call bar + embedded Jitsi panel */}
-      <AnimatePresence>
-        {activeRoom && roomCall.activeCall && (
-          <CallBar
-            callUrl={roomCall.activeCall.callUrl}
-            isVideo={roomCall.activeCall.isVideo}
-            startedBy={roomCall.activeCall.startedBy}
-            elapsed={callElapsed}
-            isRecording={roomCall.isRecording}
-            recordingTime={roomCall.recordingTime}
-            formatRecTime={roomCall.formatRecTime}
-            onReopen={callMinimized ? () => setCallMinimized(false) : undefined}
-            onEnd={() => { setCallMinimized(false); roomCall.endCall(); }}
-            onStartRecording={() => roomCall.startRecording(async (blob, filename) => {
-              await handleSaveRoomRecording(blob, filename);
-              refetchRecordings();
-            })}
-            onStopRecording={roomCall.stopRecording}
-          />
-        )}
-      </AnimatePresence>
-      {activeRoom && roomCall.activeCall && (
-        <JitsiCallPanel
-          roomName={roomCall.activeCall.roomName}
-          callUrl={roomCall.activeCall.callUrl}
-          isVideo={roomCall.activeCall.isVideo}
-          displayName={myName}
-          onLeave={() => { setCallMinimized(false); roomCall.endCall(); }}
-          onMinimize={() => setCallMinimized(true)}
-          isMinimized={callMinimized}
-        />
-      )}
+      {/* Call UI is rendered globally in AppLayout (CallBar) and as a Jitsi popup window. */}
+
 
 
       {/* Room creation modal */}
