@@ -59,20 +59,22 @@ export function GlobalVoiceButton() {
     setInput("");
     setThinking(true);
 
-    // Try local + AI intent recognition first — navigate if confident
-    try {
-      const intent = await recognizeIntent(text.trim());
-      if (intent.route && (intent.confidence === "high" || intent.confidence === "medium")) {
-        const ack = `✅ Opening ${intent.name || "page"}…`;
-        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: ack }]);
-        if (voiceMode) speak(ack);
-        navigate(intent.route);
-        setOpen(false);
-        setThinking(false);
-        return;
+    // Try local + AI intent recognition first — navigate if confident (when enabled)
+    if (intentNav) {
+      try {
+        const intent = await recognizeIntent(text.trim());
+        if (intent.route && (intent.confidence === "high" || intent.confidence === "medium")) {
+          const ack = `✅ Opening ${intent.name || "page"}…`;
+          setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: ack }]);
+          if (voiceMode) speak(ack);
+          navigate(intent.route);
+          setOpen(false);
+          setThinking(false);
+          return;
+        }
+      } catch (err) {
+        console.warn("Intent recognition failed, falling back to AI", err);
       }
-    } catch (err) {
-      console.warn("Intent recognition failed, falling back to AI", err);
     }
 
     let assistant = "";
