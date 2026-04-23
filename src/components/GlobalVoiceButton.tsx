@@ -13,6 +13,8 @@ type Mode = "voice" | "text";
 
 interface Msg { id: string; role: "user" | "assistant"; content: string; }
 
+const INTENT_NAV_KEY = "sofi-voice-intent-nav";
+
 export function GlobalVoiceButton() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -22,8 +24,15 @@ export function GlobalVoiceButton() {
   const [speaking, setSpeaking] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [intentNav, setIntentNav] = useState<boolean>(() => {
+    try { return localStorage.getItem(INTENT_NAV_KEY) !== "0"; } catch { return true; }
+  });
   const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try { localStorage.setItem(INTENT_NAV_KEY, intentNav ? "1" : "0"); } catch { /* noop */ }
+  }, [intentNav]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
