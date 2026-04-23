@@ -444,12 +444,8 @@ export default function SmartWorkspace() {
   const [activeRoomId, setActiveRoomId] = useState<string | undefined>(undefined);
   const activeRoom = rooms.find((r) => r.id === activeRoomId);
 
-  // ===== Room chat / call state =====
-  const roomCall = useCallSignal(activeRoomId || "no-room");
-  const [callMinimized, setCallMinimized] = useState(false);
-  useEffect(() => {
-    if (roomCall.activeCall) setCallMinimized(false);
-  }, [roomCall.activeCall?.callUrl]);
+  // ===== Room chat / call state (call lives in global CallContext) =====
+  const roomCall = useCallContext();
   const { messages: roomMessages } = useRoomMessages(activeRoomId);
   const sendRoomMessage = useSendRoomMessage();
   const uploadRoomFile = useUploadRoomFile();
@@ -475,13 +471,6 @@ export default function SmartWorkspace() {
     }
   }, [roomMessages.length]);
 
-  // Ring + toast on incoming room calls
-  useIncomingCallNotifier(
-    roomMessages as any,
-    user?.id,
-    (callUrl) => roomCall.joinCall(callUrl),
-    !!roomCall.activeCall,
-  );
 
   const handleStartRoomCall = (isVideo: boolean) => {
     if (!activeRoomId) return;
