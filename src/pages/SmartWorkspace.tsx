@@ -11,8 +11,7 @@ import {
 } from "lucide-react";
 import { useStudyFiles, useWorkspaceRooms, StudyFile } from "@/hooks/useStudyFiles";
 import { useRoomMessages, useSendRoomMessage, useUploadRoomFile } from "@/hooks/useRoomChat";
-import { useCallSignal } from "@/hooks/useCallSignal";
-import { useIncomingCallNotifier } from "@/hooks/useIncomingCallNotifier";
+import { useCallContext } from "@/contexts/CallContext";
 import CallBar from "@/components/chat/CallBar";
 import JitsiCallPanel from "@/components/chat/JitsiCallPanel";
 import VoiceMicButton from "@/components/VoiceMicButton";
