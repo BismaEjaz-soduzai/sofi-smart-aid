@@ -182,6 +182,15 @@ export function GlobalVoiceButton() {
                 </div>
                 <div className="flex items-center gap-1">
                   <button
+                    onClick={() => setIntentNav((v) => !v)}
+                    title={intentNav ? "Voice navigation: ON (click to disable)" : "Voice navigation: OFF (click to enable)"}
+                    className={`text-[10px] font-medium px-2 py-1 rounded-md transition-colors ${
+                      intentNav ? "bg-primary/15 text-primary hover:bg-primary/25" : "bg-muted text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Nav: {intentNav ? "On" : "Off"}
+                  </button>
+                  <button
                     onClick={() => setMode(mode === "voice" ? "text" : "voice")}
                     className="text-[10px] font-medium px-2 py-1 rounded-md bg-muted text-muted-foreground hover:text-foreground transition-colors"
                   >
