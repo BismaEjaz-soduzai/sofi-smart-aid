@@ -431,32 +431,18 @@ function ChatView({ room, userId, onBack, onLeave }: { room: ChatRoom; userId: s
 
             {messages.map((msg) => {
               // Render system messages with embedded call URL specially
-              if (msg.message_type === "system" && msg.content.includes("||CALL_URL:")) {
-                const callUrl = msg.content.split("||CALL_URL:")[1]?.trim() || "";
-                const displayText = msg.content.split("||CALL_URL:")[0].trim();
+              const parsed = parseCallSystemMessage(msg.content);
+              if (msg.message_type === "system" && parsed.isCall && parsed.callUrl) {
                 const callerName = memberMap.get(msg.user_id) || "Someone";
                 const myName = memberMap.get(userId) || "Guest";
                 return (
-                  <div key={msg.id} className="flex justify-center">
-                    <div className="flex items-center justify-between gap-3 bg-success/5 border border-success/20 rounded-2xl px-4 py-3 w-full max-w-md">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
-                          <span className="absolute inline-flex h-full w-full rounded-full bg-success opacity-75 animate-ping" />
-                          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-success" />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold text-foreground truncate">{callerName}</p>
-                          <p className="text-[11px] text-muted-foreground truncate">{displayText}</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => call.joinCall(callUrl, myName)}
-                        className="text-xs font-semibold bg-success text-success-foreground hover:opacity-90 rounded-full px-3 py-1.5 transition-opacity flex-shrink-0"
-                      >
-                        📞 Join Call
-                      </button>
-                    </div>
-                  </div>
+                  <CallSystemBanner
+                    key={msg.id}
+                    callerName={callerName}
+                    displayText={parsed.displayText}
+                    callUrl={parsed.callUrl}
+                    onJoin={(url) => call.joinCall(url, myName)}
+                  />
                 );
               }
               const repliedMsg = msg.reply_to_id ? messageMap.get(msg.reply_to_id) : null;
