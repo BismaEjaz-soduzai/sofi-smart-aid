@@ -6,8 +6,9 @@ import {
   Presentation, Library, X, Calendar as CalendarIcon, Target, TrendingUp,
   CheckCircle2, Clock, MoreHorizontal, Trash2, ChevronRight,
   Loader2, Send, LayoutList, LayoutGrid, CalendarDays, Edit3, Save, ArrowLeft,
-  AlertCircle, Bell, RefreshCw, Wand2, Brain, Check, Flame, Layers,
+  AlertCircle, Bell, RefreshCw, Wand2, Brain, Check, Flame, Layers, Star,
 } from "lucide-react";
+import { useRewards } from "@/hooks/useRewards";
 import { usePlans, useCreatePlan, useDeletePlan, useUpdatePlan, usePlanSessions, useCreateSession, useToggleSession, type Plan, type PlanInsert } from "@/hooks/usePlans";
 import { useTasks } from "@/hooks/useTasks";
 import { supabase } from "@/integrations/supabase/client";
@@ -123,7 +124,7 @@ function parseAiSessions(markdown: string, startDate: string | null): Array<{ ti
 }
 
 type View = "overview" | "create" | "ai-generate" | "plan-detail";
-type Tab = "board" | "list" | "calendar";
+type Tab = "board" | "calendar";
 
 const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } } };
 const item = { hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } };
@@ -438,7 +439,6 @@ RULES YOU MUST FOLLOW:
         <div className="flex gap-1">
           {([
             { key: "board" as Tab, label: "Board", icon: LayoutGrid },
-            { key: "list" as Tab, label: "List", icon: LayoutList },
             { key: "calendar" as Tab, label: "Calendar", icon: CalendarDays },
           ]).map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)}
