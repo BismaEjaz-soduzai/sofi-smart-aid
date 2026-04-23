@@ -1558,9 +1558,15 @@ export default function SmartWorkspace() {
                         </p>
                       </div>
                       {(viewingFile.sourceUrl || viewingFile.url) && (
-                        <a href={viewingFile.sourceUrl || viewingFile.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors">
+                        <button
+                          onClick={() => {
+                            const u = viewingFile.sourceUrl || viewingFile.url;
+                            if (u) openFileInNewTabInline(u, viewingFile.name);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                        >
                           <ExternalLink className="w-3.5 h-3.5" /> Open in new tab
-                        </a>
+                        </button>
                       )}
                     </div>
                     {viewingFile.previewMode === "office" && viewingFile.url && (
