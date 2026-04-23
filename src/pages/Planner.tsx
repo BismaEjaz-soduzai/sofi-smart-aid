@@ -212,6 +212,27 @@ export default function Planner() {
   const completedPlans = plans.filter((p) => p.status === "completed");
   const avgProgress = plans.length ? Math.round(plans.reduce((a, p) => a + (p.progress || 0), 0) / plans.length) : 0;
 
+  const awardSessionXP = () => {
+    try {
+      const raw = localStorage.getItem("sofi_rewards");
+      const cur = raw ? JSON.parse(raw) : { xp: 0, sessions: 0, lastDate: "", streak: 0 };
+      const today = format(new Date(), "yyyy-MM-dd");
+      let streak = cur.streak || 0;
+      if (cur.lastDate !== today) {
+        const yesterday = format(new Date(Date.now() - 86400000), "yyyy-MM-dd");
+        streak = cur.lastDate === yesterday ? streak + 1 : 1;
+      }
+      const next = {
+        xp: (cur.xp || 0) + 30,
+        sessions: (cur.sessions || 0) + 1,
+        lastDate: today,
+        streak,
+      };
+      localStorage.setItem("sofi_rewards", JSON.stringify(next));
+      window.dispatchEvent(new CustomEvent("sofi-rewards-updated", { detail: next }));
+    } catch { /* noop */ }
+  };
+
   const toggleTodaySession = async (sessionId: string, planId: string) => {
     setAllSessions((cur) => cur.map((s) => s.id === sessionId ? { ...s, is_completed: true } : s));
     const { error } = await supabase.from("plan_sessions").update({ is_completed: true } as any).eq("id", sessionId);
@@ -227,7 +248,8 @@ export default function Planner() {
       const status = progress === 100 ? "completed" : "active";
       await supabase.from("plans").update({ progress, status } as any).eq("id", planId);
     }
-    toast.success("Nice — one down 🎯");
+    awardSessionXP();
+    toast.success("✅ Done! +30 XP 🎯");
   };
 
   // Milestone notifications — checks every hour and on plan changes
