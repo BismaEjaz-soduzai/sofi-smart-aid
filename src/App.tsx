@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { FocusTimerProvider } from "@/contexts/FocusTimerContext";
+import { CallProvider } from "@/contexts/CallContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "@/components/AppLayout";
 import { DeadlineNotifier } from "@/components/DeadlineNotifier";
@@ -45,7 +46,7 @@ const App = () => (
               <Route path="/signup" element={<SignUp />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
-              <Route element={<ProtectedRoute><><ReminderScheduler /><AppLayout /></></ProtectedRoute>}>
+              <Route element={<ProtectedRoute><CallProvider><><ReminderScheduler /><AppLayout /></></CallProvider></ProtectedRoute>}>
                 <Route path="/dashboard" element={<><DeadlineNotifier /><NoteReminderNotifier /><Dashboard /></>} />
                 <Route path="/organizer" element={<Organizer />} />
                 <Route path="/tasks" element={<Navigate to="/organizer" replace />} />

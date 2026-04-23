@@ -1,9 +1,14 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AppHeader } from "@/components/AppHeader";
 import { Outlet } from "react-router-dom";
+import { AnimatePresence } from "framer-motion";
 import VoiceNavigator from "@/components/VoiceNavigator";
+import { GlobalCallNotifier } from "@/components/GlobalCallNotifier";
+import CallBar from "@/components/chat/CallBar";
+import { useCallContext } from "@/contexts/CallContext";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { format } from "date-fns";
