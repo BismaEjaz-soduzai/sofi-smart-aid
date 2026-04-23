@@ -146,6 +146,7 @@ export default function Planner() {
   const createSession = useCreateSession();
   const activity = useDailyActivity(7);
   const navigate = useNavigate();
+  const rewards = useRewards();
   const notifiedRef = useRef<Set<string>>(new Set());
   const [view, setView] = useState<View>("overview");
   const [tab, setTab] = useState<Tab>("board");
