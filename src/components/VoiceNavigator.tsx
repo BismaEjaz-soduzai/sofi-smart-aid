@@ -106,6 +106,8 @@ function DraggableMicLauncher({ onOpen }: { onOpen: () => void }) {
     </motion.button>
   );
 }
+
+export default function VoiceNavigator() {
   const navigate = useNavigate();
   const location = useLocation();
 
