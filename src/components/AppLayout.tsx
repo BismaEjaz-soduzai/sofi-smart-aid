@@ -107,13 +107,45 @@ export default function AppLayout() {
 
   const handleSaveGlobalRecording = async (blob: Blob, filename: string) => {
     try {
-      const path = `recordings/${session?.user?.id || "anon"}/${filename}`;
-      const { error } = await supabase.storage.from("chat-files").upload(path, blob, {
-        contentType: "video/webm",
-        upsert: false,
-      });
-      if (error) throw error;
-      toast.success("Recording saved");
+      const userId = session?.user?.id || "anon";
+      const workspaceRoomId = call.activeCall?.workspaceRoomId || null;
+
+      if (workspaceRoomId) {
+        // Save inside the workspace room folder so every member sees it
+        const path = `rooms/${workspaceRoomId}/recordings/${filename}`;
+        const { error } = await supabase.storage.from("study-files").upload(path, blob, {
+          contentType: "video/webm",
+          upsert: false,
+        });
+        if (error) throw error;
+        // Index in study_files so it shows up in the room's recordings tab + file list
+        await supabase.from("study_files").insert({
+          user_id: userId,
+          room_id: workspaceRoomId,
+          file_name: filename,
+          file_type: "video/webm",
+          file_size: blob.size,
+          file_path: path,
+        });
+        toast.success("Recording saved to room");
+      } else {
+        // Personal recording — save under user folder in study-files so it's listed in personal files too
+        const path = `personal/${userId}/recordings/${filename}`;
+        const { error } = await supabase.storage.from("study-files").upload(path, blob, {
+          contentType: "video/webm",
+          upsert: false,
+        });
+        if (error) throw error;
+        await supabase.from("study_files").insert({
+          user_id: userId,
+          room_id: null,
+          file_name: filename,
+          file_type: "video/webm",
+          file_size: blob.size,
+          file_path: path,
+        });
+        toast.success("Recording saved");
+      }
     } catch (err) {
       console.error(err);
       toast.error("Failed to save recording");
