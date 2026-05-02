@@ -1186,7 +1186,7 @@ export default function SmartWorkspace() {
                             callerName={m.sender_name || "Someone"}
                             displayText={parsed.displayText}
                             callUrl={parsed.callUrl}
-                            onJoin={(url) => roomCall.joinCall(url)}
+                            onJoin={(url) => roomCall.joinCall(url, myName, activeRoomId)}
                           />
                         );
                       }
