@@ -7,6 +7,8 @@ export interface ActiveCall {
   startedBy: string;
   startedAt: number;
   roomName: string;
+  /** Workspace room id this call belongs to (so global handlers can save recordings to the right room). */
+  workspaceRoomId?: string | null;
 }
 
 export function makeSessionRoomName(roomId: string): string {
