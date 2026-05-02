@@ -113,11 +113,17 @@ export default function AppLayout() {
       if (workspaceRoomId) {
         // Save inside the workspace room folder so every member sees it
         const path = `rooms/${workspaceRoomId}/recordings/${filename}`;
+        const savingToastId = toast.loading("Saving recording to workspace…", {
+          description: filename,
+        });
         const { error } = await supabase.storage.from("study-files").upload(path, blob, {
           contentType: "video/webm",
           upsert: false,
         });
-        if (error) throw error;
+        if (error) {
+          toast.dismiss(savingToastId);
+          throw error;
+        }
         // Index in study_files so it shows up in the room's recordings tab + file list
         await supabase.from("study_files").insert({
           user_id: userId,
@@ -127,7 +133,26 @@ export default function AppLayout() {
           file_size: blob.size,
           file_path: path,
         });
-        toast.success("Recording saved to room");
+        toast.dismiss(savingToastId);
+        const sizeMb = (blob.size / (1024 * 1024)).toFixed(1);
+        toast.success("✅ Recording saved to Workspace › Recordings", {
+          description: `${filename} • ${sizeMb} MB`,
+          duration: 6000,
+          action: {
+            label: "Open Recordings",
+            onClick: () => {
+              window.location.href = `/workspace?room=${workspaceRoomId}&tab=recordings`;
+            },
+          },
+        });
+        // Broadcast so the SmartWorkspace recordings tab can refresh in-place
+        try {
+          window.dispatchEvent(
+            new CustomEvent("sofi-recording-saved", {
+              detail: { roomId: workspaceRoomId, filename, path },
+            }),
+          );
+        } catch { /* noop */ }
       } else {
         // Personal recording — save under user folder in study-files so it's listed in personal files too
         const path = `personal/${userId}/recordings/${filename}`;
