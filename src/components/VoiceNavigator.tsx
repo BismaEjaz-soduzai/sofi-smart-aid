@@ -206,19 +206,8 @@ export default function VoiceNavigator() {
 
   return (
     <>
-      {/* ===== Floating launcher button ===== */}
-      <motion.button
-        onClick={() => setOpen(true)}
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-xl hover:shadow-2xl transition-shadow"
-        aria-label="Open voice navigator"
-        title="Voice navigator (any language)"
-      >
-        <Mic className="w-6 h-6" />
-      </motion.button>
+      {/* ===== Floating draggable launcher button ===== */}
+      <DraggableMicLauncher onOpen={() => setOpen(true)} />
 
       {/* ===== Modal ===== */}
       <AnimatePresence>
