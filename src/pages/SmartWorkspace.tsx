@@ -543,7 +543,7 @@ export default function SmartWorkspace() {
         senderName: myName,
         messageType: "system",
       });
-    });
+    }, activeRoomId);
   };
 
   const handleSaveRoomRecording = async (blob: Blob, filename: string) => {
