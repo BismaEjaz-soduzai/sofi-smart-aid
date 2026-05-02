@@ -68,20 +68,29 @@ function computeStreak(completedDates: Date[]): number {
 export default function ProfilePage() {
   const { user } = useAuth();
   const uploadAvatar = useUploadAvatar();
+  const { data: profile } = useProfile();
+  const updateProfile = useUpdateProfile();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: tasks = [] } = useTasks();
   const { data: notes = [] } = useNotes();
   const { data: plans = [] } = usePlans();
 
-  const initialName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "";
+  // Prefer DB profile, fall back to auth metadata, then email prefix
+  const initialName =
+    profile?.display_name ||
+    user?.user_metadata?.full_name ||
+    user?.email?.split("@")[0] ||
+    "";
   const [name, setName] = useState(initialName);
   const [editing, setEditing] = useState(false);
   const [savingName, setSavingName] = useState(false);
 
   useEffect(() => { setName(initialName); }, [initialName]);
 
-  const avatarUrl: string | undefined = user?.user_metadata?.avatar_url;
+  // Prefer DB profile avatar; fall back to auth metadata
+  const avatarUrl: string | undefined =
+    profile?.avatar_url || user?.user_metadata?.avatar_url || undefined;
 
   const initials = useMemo(() =>
     (name || "U").split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2),
@@ -111,7 +120,7 @@ export default function ProfilePage() {
     return hour;
   })();
 
-  /* avatar upload */
+  /* avatar upload — persists to profiles.avatar_url AND auth metadata */
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -125,9 +134,10 @@ export default function ProfilePage() {
       if (upErr) throw upErr;
       const { data } = supabase.storage.from("avatars").getPublicUrl(path);
       const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
-      const { error: updErr } = await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
-      if (updErr) throw updErr;
-      toast.success("Profile photo updated");
+      // Persist to DB profile (primary source of truth)
+      await updateProfile.mutateAsync({ avatar_url: publicUrl });
+      // Mirror to auth metadata so headers/sidebar pick it up immediately
+      await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
     } catch (err: any) {
       toast.error(err.message || "Upload failed");
     }
@@ -137,11 +147,17 @@ export default function ProfilePage() {
     const trimmed = name.trim();
     if (!trimmed || trimmed === initialName) { setEditing(false); return; }
     setSavingName(true);
-    const { error } = await supabase.auth.updateUser({ data: { full_name: trimmed } });
-    setSavingName(false);
-    setEditing(false);
-    if (error) toast.error(error.message);
-    else toast.success("Name updated");
+    try {
+      // Save to DB profile (so it persists across sessions / devices)
+      await updateProfile.mutateAsync({ display_name: trimmed });
+      // Mirror to auth metadata for instant UI elsewhere
+      await supabase.auth.updateUser({ data: { full_name: trimmed } });
+    } catch (err: any) {
+      toast.error(err.message || "Couldn't update name");
+    } finally {
+      setSavingName(false);
+      setEditing(false);
+    }
   };
 
   return (

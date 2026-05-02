@@ -31,6 +31,82 @@ const QUICK_CHIPS = [
   "Motivation",
 ];
 
+const MIC_POS_KEY = "sofi-mic-position";
+
+function DraggableMicLauncher({ onOpen }: { onOpen: () => void }) {
+  const BTN = 56;
+  const MARGIN = 16;
+  const [pos, setPos] = useState<{ x: number; y: number }>(() => {
+    try {
+      const raw = localStorage.getItem(MIC_POS_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    return {
+      x: typeof window !== "undefined" ? window.innerWidth - BTN - 24 : 24,
+      y: typeof window !== "undefined" ? window.innerHeight - BTN - 24 : 24,
+    };
+  });
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number; moved: boolean } | null>(null);
+
+  // Clamp on resize
+  useEffect(() => {
+    const onResize = () => {
+      setPos((p) => ({
+        x: Math.min(Math.max(MARGIN, p.x), window.innerWidth - BTN - MARGIN),
+        y: Math.min(Math.max(MARGIN, p.y), window.innerHeight - BTN - MARGIN),
+      }));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y, moved: false };
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.moved && Math.hypot(dx, dy) > 4) d.moved = true;
+    if (!d.moved) return;
+    const nx = Math.min(Math.max(MARGIN, d.origX + dx), window.innerWidth - BTN - MARGIN);
+    const ny = Math.min(Math.max(MARGIN, d.origY + dy), window.innerHeight - BTN - MARGIN);
+    setPos({ x: nx, y: ny });
+  };
+
+  const onPointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* noop */ }
+    const d = dragRef.current;
+    dragRef.current = null;
+    if (d?.moved) {
+      try { localStorage.setItem(MIC_POS_KEY, JSON.stringify(pos)); } catch { /* ignore */ }
+    } else {
+      onOpen();
+    }
+  };
+
+  return (
+    <motion.button
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      style={{ left: pos.x, top: pos.y, touchAction: "none" }}
+      className="fixed z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-xl hover:shadow-2xl transition-shadow cursor-grab active:cursor-grabbing select-none"
+      aria-label="Open voice navigator (drag to move)"
+      title="Drag to move · Click to open voice navigator"
+    >
+      <Mic className="w-6 h-6 pointer-events-none" />
+    </motion.button>
+  );
+}
+
 export default function VoiceNavigator() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -206,19 +282,8 @@ export default function VoiceNavigator() {
 
   return (
     <>
-      {/* ===== Floating launcher button ===== */}
-      <motion.button
-        onClick={() => setOpen(true)}
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-xl hover:shadow-2xl transition-shadow"
-        aria-label="Open voice navigator"
-        title="Voice navigator (any language)"
-      >
-        <Mic className="w-6 h-6" />
-      </motion.button>
+      {/* ===== Floating draggable launcher button ===== */}
+      <DraggableMicLauncher onOpen={() => setOpen(true)} />
 
       {/* ===== Modal ===== */}
       <AnimatePresence>
