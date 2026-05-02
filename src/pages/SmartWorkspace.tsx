@@ -849,6 +849,18 @@ export default function SmartWorkspace() {
   // Recordings + pinboard live data (per active room)
   const { recordings, isLoading: recordingsLoading, refetch: refetchRecordings, remove: removeRecording } = useRoomRecordings(activeRoomId);
   const { links, addLink, removeLink, isLoading: linksLoading } = useRoomLinks(activeRoomId);
+
+  // Auto-refresh recordings list when AppLayout finishes saving one
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { roomId?: string } | undefined;
+      if (detail?.roomId && detail.roomId === activeRoomId) {
+        refetchRecordings();
+      }
+    };
+    window.addEventListener("sofi-recording-saved", handler);
+    return () => window.removeEventListener("sofi-recording-saved", handler);
+  }, [activeRoomId, refetchRecordings]);
   const [newLinkUrl, setNewLinkUrl] = useState("");
   const [newLinkTitle, setNewLinkTitle] = useState("");
   const [previewLink, setPreviewLink] = useState<{ url: string; embed: string; title: string } | null>(null);
