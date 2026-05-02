@@ -133,6 +133,7 @@ export function useCallSignal(roomId: string) {
       isVideo: boolean,
       displayName: string,
       onPostMessage?: (displayText: string, callUrl: string) => void | Promise<void>,
+      workspaceRoomId?: string | null,
     ) => {
       const roomName = makeSessionRoomName(roomId);
       const callUrl = `https://meet.jit.si/${roomName}`;
@@ -142,6 +143,7 @@ export function useCallSignal(roomId: string) {
         startedBy: displayName,
         startedAt: Date.now(),
         roomName,
+        workspaceRoomId: workspaceRoomId ?? null,
       };
       setActiveCall(call);
       openPopup(callUrl, displayName);
@@ -158,7 +160,7 @@ export function useCallSignal(roomId: string) {
   );
 
   const joinCall = useCallback(
-    (callUrl: string, displayName: string = "Guest") => {
+    (callUrl: string, displayName: string = "Guest", workspaceRoomId?: string | null) => {
       setActiveCall((prev) => {
         if (prev && prev.callUrl === callUrl) return prev;
         return {
@@ -167,6 +169,7 @@ export function useCallSignal(roomId: string) {
           startedBy: prev?.startedBy ?? "Someone",
           startedAt: prev?.startedAt ?? Date.now(),
           roomName: roomNameFromUrl(callUrl),
+          workspaceRoomId: workspaceRoomId ?? prev?.workspaceRoomId ?? null,
         };
       });
       openPopup(callUrl, displayName);
