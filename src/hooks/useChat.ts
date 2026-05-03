@@ -267,16 +267,32 @@ export function useLeaveRoom() {
   return useMutation({
     mutationFn: async (roomId: string) => {
       if (!user) throw new Error("Not authenticated");
+      // If the user created the room, delete the entire room (cascades members/messages).
+      const { data: roomRow, error: fetchErr } = await supabase
+        .from("chat_rooms")
+        .select("created_by")
+        .eq("id", roomId)
+        .maybeSingle();
+      if (fetchErr) throw fetchErr;
+
+      if (roomRow?.created_by === user.id) {
+        const { error: delErr } = await supabase.from("chat_rooms").delete().eq("id", roomId);
+        if (delErr) throw delErr;
+        return { deleted: true };
+      }
+
       const { error } = await supabase
         .from("chat_members")
         .delete()
         .eq("room_id", roomId)
         .eq("user_id", user.id);
       if (error) throw error;
+      return { deleted: false };
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["chat-rooms"] });
-      toast.success("Left room");
+      toast.success(res?.deleted ? "Room deleted" : "Left room");
     },
+    onError: (err: Error) => toast.error(err.message || "Failed to leave room"),
   });
 }
