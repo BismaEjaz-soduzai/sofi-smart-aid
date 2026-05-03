@@ -70,13 +70,29 @@ export function useWorkspaceRooms() {
 
   const deleteRoom = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("workspace_rooms").delete().eq("id", id);
+      if (!user) throw new Error("Not authenticated");
+      // Try owner-delete first; if RLS denies (not owner), leave membership instead.
+      const { data: deleted, error } = await supabase
+        .from("workspace_rooms")
+        .delete()
+        .eq("id", id)
+        .select("id");
       if (error) throw error;
+      if (!deleted || deleted.length === 0) {
+        const { error: leaveErr } = await supabase
+          .from("workspace_room_members")
+          .delete()
+          .eq("room_id", id)
+          .eq("user_id", user.id);
+        if (leaveErr) throw leaveErr;
+        return { left: true };
+      }
+      return { left: false };
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["workspace-rooms"] });
       queryClient.invalidateQueries({ queryKey: ["study-files"] });
-      toast.success("Room deleted");
+      toast.success(res?.left ? "Left room" : "Room deleted");
     },
     onError: (err: Error) => toast.error(err.message),
   });
