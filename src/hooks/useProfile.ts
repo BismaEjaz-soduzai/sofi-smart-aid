@@ -9,9 +9,20 @@ export interface Profile {
   display_name: string | null;
   avatar_url: string | null;
   bio: string;
+  location: string | null;
+  phone: string | null;
+  linkedin_url: string | null;
+  github_url: string | null;
+  website_url: string | null;
+  institution: string | null;
+  field_of_study: string | null;
+  year_of_study: string | null;
+  student_id: string | null;
   created_at: string;
   updated_at: string;
 }
+
+export type ProfileUpdate = Partial<Omit<Profile, "id" | "user_id" | "created_at" | "updated_at">>;
 
 export function useProfile() {
   const { user } = useAuth();
@@ -34,7 +45,7 @@ export function useUpdateProfile() {
   const qc = useQueryClient();
   const { user } = useAuth();
   return useMutation({
-    mutationFn: async (updates: { display_name?: string; avatar_url?: string; bio?: string }) => {
+    mutationFn: async (updates: ProfileUpdate) => {
       const { data, error } = await supabase
         .from("profiles")
         .update(updates as any)
