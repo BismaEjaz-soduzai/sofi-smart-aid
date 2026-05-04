@@ -6,6 +6,7 @@ import { Outlet } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import VoiceNavigator from "@/components/VoiceNavigator";
 import { GlobalCallNotifier } from "@/components/GlobalCallNotifier";
+import FocusCompletionModal from "@/components/FocusCompletionModal";
 import CallBar from "@/components/chat/CallBar";
 import { useCallContext } from "@/contexts/CallContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -206,6 +207,7 @@ export default function AppLayout() {
         </div>
         <VoiceNavigator />
         <GlobalCallNotifier />
+        <FocusCompletionModal />
       </div>
     </SidebarProvider>
   );
