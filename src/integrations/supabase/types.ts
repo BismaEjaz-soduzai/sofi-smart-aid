@@ -446,27 +446,54 @@ export type Database = {
           bio: string | null
           created_at: string
           display_name: string | null
+          field_of_study: string | null
+          github_url: string | null
           id: string
+          institution: string | null
+          linkedin_url: string | null
+          location: string | null
+          phone: string | null
+          student_id: string | null
           updated_at: string
           user_id: string
+          website_url: string | null
+          year_of_study: string | null
         }
         Insert: {
           avatar_url?: string | null
           bio?: string | null
           created_at?: string
           display_name?: string | null
+          field_of_study?: string | null
+          github_url?: string | null
           id?: string
+          institution?: string | null
+          linkedin_url?: string | null
+          location?: string | null
+          phone?: string | null
+          student_id?: string | null
           updated_at?: string
           user_id: string
+          website_url?: string | null
+          year_of_study?: string | null
         }
         Update: {
           avatar_url?: string | null
           bio?: string | null
           created_at?: string
           display_name?: string | null
+          field_of_study?: string | null
+          github_url?: string | null
           id?: string
+          institution?: string | null
+          linkedin_url?: string | null
+          location?: string | null
+          phone?: string | null
+          student_id?: string | null
           updated_at?: string
           user_id?: string
+          website_url?: string | null
+          year_of_study?: string | null
         }
         Relationships: []
       }
