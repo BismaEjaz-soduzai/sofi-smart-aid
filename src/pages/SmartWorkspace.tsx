@@ -547,22 +547,58 @@ export default function SmartWorkspace() {
   };
 
   const handleSaveRoomRecording = async (blob: Blob, filename: string) => {
-    if (!activeRoomId || !user) return;
-    // Save under the ROOM folder so every member sees it
+    if (!activeRoomId || !user) {
+      toast.error("Open a room before saving recordings");
+      return;
+    }
+    if (!blob || blob.size === 0) {
+      toast.error("Recording is empty — nothing to save");
+      return;
+    }
+    const savingId = toast.loading("Saving recording to team folder…", { description: filename });
     const path = `rooms/${activeRoomId}/recordings/${filename}`;
-    const { error } = await supabase.storage.from("study-files").upload(path, blob, { contentType: "video/webm" });
-    if (error) { toast.error("Recording upload failed"); return; }
-    const { data } = await supabase.storage.from("study-files").createSignedUrl(path, 60 * 60 * 24 * 365);
-    await sendRoomMessage.mutateAsync({
-      roomId: activeRoomId,
-      content: "Shared a recording",
-      senderName: myName,
-      messageType: "file",
-      fileName: filename,
-      fileUrl: data?.signedUrl || "",
-      fileSize: blob.size,
-    });
-    toast.success("Recording saved to team folder");
+    try {
+      const { error: upErr } = await supabase.storage
+        .from("study-files")
+        .upload(path, blob, { contentType: "video/webm", upsert: false });
+      if (upErr) throw upErr;
+
+      const { error: insErr } = await supabase.from("study_files").insert({
+        user_id: user.id,
+        room_id: activeRoomId,
+        file_name: filename,
+        file_type: "video/webm",
+        file_size: blob.size,
+        file_path: path,
+      });
+      if (insErr) {
+        await supabase.storage.from("study-files").remove([path]).catch(() => undefined);
+        throw insErr;
+      }
+
+      const { data } = await supabase.storage.from("study-files").createSignedUrl(path, 60 * 60 * 24 * 365);
+      await sendRoomMessage.mutateAsync({
+        roomId: activeRoomId,
+        content: "Shared a recording",
+        senderName: myName,
+        messageType: "file",
+        fileName: filename,
+        fileUrl: data?.signedUrl || "",
+        fileSize: blob.size,
+      });
+
+      toast.dismiss(savingId);
+      toast.success("Recording saved to team folder");
+      try {
+        window.dispatchEvent(new CustomEvent("sofi-recording-saved", { detail: { roomId: activeRoomId, filename, path } }));
+      } catch { /* noop */ }
+      refetchRecordings();
+    } catch (err) {
+      toast.dismiss(savingId);
+      const msg = err instanceof Error ? err.message : "Recording upload failed";
+      console.error("[recording] save failed:", err);
+      toast.error(`Failed to save recording: ${msg}`);
+    }
   };
 
   const handleSendChat = async () => {
