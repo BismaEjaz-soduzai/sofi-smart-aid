@@ -5,6 +5,7 @@ import {
   BookOpen,
   Sparkles,
   MessageSquare,
+  Mic2,
   User,
   ChevronLeft,
   LogOut,
@@ -39,6 +40,7 @@ const workspaceNav = [
   { title: "Smart Workspace", url: "/workspace", icon: BookOpen },
   { title: "SOFI Assistant", url: "/assistant", icon: Sparkles },
   { title: "Study Chat", url: "/chat", icon: MessageSquare },
+  { title: "Oral Exam", url: "/oral-exam", icon: Mic2 },
 ];
 
 const accountNav = [
