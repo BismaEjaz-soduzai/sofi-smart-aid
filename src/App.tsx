@@ -27,6 +27,7 @@ import SettingsPage from "@/pages/SettingsPage";
 import ProfilePage from "@/pages/ProfilePage";
 import ChatRooms from "@/pages/ChatRooms";
 import StudyAnalytics from "@/pages/StudyAnalytics";
+import OralExam from "@/pages/OralExam";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -58,6 +59,7 @@ const App = () => (
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/chat" element={<ChatRooms />} />
                 <Route path="/analytics" element={<StudyAnalytics />} />
+                <Route path="/oral-exam" element={<OralExam />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
