@@ -107,34 +107,54 @@ export default function AppLayout() {
   }, [call.activeCall]);
 
   const handleSaveGlobalRecording = async (blob: Blob, filename: string) => {
+    const userId = session?.user?.id;
+    if (!userId) {
+      toast.error("You must be signed in to save a recording");
+      return;
+    }
+    if (!blob || blob.size === 0) {
+      toast.error("Recording is empty — nothing to save");
+      return;
+    }
+    const workspaceRoomId = call.activeCall?.workspaceRoomId || null;
+    const savingToastId = toast.loading(
+      workspaceRoomId ? "Saving recording to workspace…" : "Saving recording…",
+      { description: filename },
+    );
+
     try {
-      const userId = session?.user?.id || "anon";
-      const workspaceRoomId = call.activeCall?.workspaceRoomId || null;
+      const path = workspaceRoomId
+        ? `rooms/${workspaceRoomId}/recordings/${filename}`
+        : `personal/${userId}/recordings/${filename}`;
+
+      // 1) Upload blob to storage
+      const { error: uploadError } = await supabase.storage
+        .from("study-files")
+        .upload(path, blob, { contentType: "video/webm", upsert: false });
+      if (uploadError) {
+        console.error("[recording] storage upload failed", uploadError);
+        throw new Error(uploadError.message || "Upload failed");
+      }
+
+      // 2) Index in study_files so it appears in lists. If this fails, roll back the upload
+      //    so we don't show a fake-success without persistence.
+      const { error: insertError } = await supabase.from("study_files").insert({
+        user_id: userId,
+        room_id: workspaceRoomId,
+        file_name: filename,
+        file_type: "video/webm",
+        file_size: blob.size,
+        file_path: path,
+      });
+      if (insertError) {
+        console.error("[recording] db insert failed — rolling back storage object", insertError);
+        await supabase.storage.from("study-files").remove([path]).catch(() => undefined);
+        throw new Error(insertError.message || "Database insert failed");
+      }
+
+      toast.dismiss(savingToastId);
 
       if (workspaceRoomId) {
-        // Save inside the workspace room folder so every member sees it
-        const path = `rooms/${workspaceRoomId}/recordings/${filename}`;
-        const savingToastId = toast.loading("Saving recording to workspace…", {
-          description: filename,
-        });
-        const { error } = await supabase.storage.from("study-files").upload(path, blob, {
-          contentType: "video/webm",
-          upsert: false,
-        });
-        if (error) {
-          toast.dismiss(savingToastId);
-          throw error;
-        }
-        // Index in study_files so it shows up in the room's recordings tab + file list
-        await supabase.from("study_files").insert({
-          user_id: userId,
-          room_id: workspaceRoomId,
-          file_name: filename,
-          file_type: "video/webm",
-          file_size: blob.size,
-          file_path: path,
-        });
-        toast.dismiss(savingToastId);
         const sizeMb = (blob.size / (1024 * 1024)).toFixed(1);
         toast.success("✅ Recording saved to Workspace › Recordings", {
           description: `${filename} • ${sizeMb} MB`,
@@ -146,35 +166,23 @@ export default function AppLayout() {
             },
           },
         });
-        // Broadcast so the SmartWorkspace recordings tab can refresh in-place
-        try {
-          window.dispatchEvent(
-            new CustomEvent("sofi-recording-saved", {
-              detail: { roomId: workspaceRoomId, filename, path },
-            }),
-          );
-        } catch { /* noop */ }
       } else {
-        // Personal recording — save under user folder in study-files so it's listed in personal files too
-        const path = `personal/${userId}/recordings/${filename}`;
-        const { error } = await supabase.storage.from("study-files").upload(path, blob, {
-          contentType: "video/webm",
-          upsert: false,
-        });
-        if (error) throw error;
-        await supabase.from("study_files").insert({
-          user_id: userId,
-          room_id: null,
-          file_name: filename,
-          file_type: "video/webm",
-          file_size: blob.size,
-          file_path: path,
-        });
         toast.success("Recording saved");
       }
+
+      // Broadcast so any listening view (workspace recordings tab, files list) refreshes immediately.
+      try {
+        window.dispatchEvent(
+          new CustomEvent("sofi-recording-saved", {
+            detail: { roomId: workspaceRoomId, filename, path },
+          }),
+        );
+      } catch { /* noop */ }
     } catch (err) {
-      console.error(err);
-      toast.error("Failed to save recording");
+      toast.dismiss(savingToastId);
+      const msg = err instanceof Error ? err.message : "Failed to save recording";
+      console.error("[recording] save failed:", err);
+      toast.error(`Failed to save recording: ${msg}`);
     }
   };
 
