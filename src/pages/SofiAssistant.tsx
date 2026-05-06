@@ -88,6 +88,7 @@ export default function SofiAssistant() {
           { key: "voice" as Section, label: "Voice", icon: Mic },
           { key: "focus" as Section, label: "Focus", icon: Timer },
           { key: "tools" as Section, label: "Tools", icon: Sparkles },
+          { key: "viva" as Section, label: "Viva", icon: Mic2 },
         ]).map((s) => (
           <button
             key={s.key}
