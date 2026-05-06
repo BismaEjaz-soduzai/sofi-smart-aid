@@ -28,6 +28,7 @@ import ProfilePage from "@/pages/ProfilePage";
 import ChatRooms from "@/pages/ChatRooms";
 import StudyAnalytics from "@/pages/StudyAnalytics";
 import OralExam from "@/pages/OralExam";
+import Whiteboard from "@/pages/Whiteboard";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -60,6 +61,7 @@ const App = () => (
                 <Route path="/chat" element={<ChatRooms />} />
                 <Route path="/analytics" element={<StudyAnalytics />} />
                 <Route path="/oral-exam" element={<OralExam />} />
+                <Route path="/whiteboard" element={<Whiteboard />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
