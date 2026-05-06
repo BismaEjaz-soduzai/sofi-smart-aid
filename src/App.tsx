@@ -28,6 +28,7 @@ import ProfilePage from "@/pages/ProfilePage";
 import ChatRooms from "@/pages/ChatRooms";
 import StudyAnalytics from "@/pages/StudyAnalytics";
 import OralExam from "@/pages/OralExam";
+import Whiteboard from "@/pages/Whiteboard";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
