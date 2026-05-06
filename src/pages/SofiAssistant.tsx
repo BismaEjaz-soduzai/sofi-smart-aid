@@ -6,8 +6,10 @@ import {
   Calendar, BookOpen, Lightbulb, PenLine, Languages, Zap,
   Presentation, GraduationCap, MessageCircle, Mic, MicOff,
   Volume2, VolumeX, Square, Brain, Upload, FileText, X, Paperclip,
-  FolderOpen,
+  FolderOpen, Mic2, CheckCircle2, ArrowRight, RefreshCw, Trophy,
 } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip as RTooltip } from "recharts";
+import { useRewards } from "@/hooks/useRewards";
 import { toast } from "sonner";
 import { handleAiError, throwIfBadResponse } from "@/lib/aiError";
 import ReactMarkdown from "react-markdown";
