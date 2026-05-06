@@ -35,6 +35,7 @@ const mainNav = [
   { title: "Organizer", url: "/organizer", icon: FolderKanban },
   { title: "Planner", url: "/planner", icon: Calendar },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
+  { title: "AI Whiteboard", url: "/whiteboard", icon: PenTool },
 ];
 
 const workspaceNav = [
