@@ -6,6 +6,7 @@ import {
   Sparkles,
   MessageSquare,
   Mic2,
+  PenTool,
   User,
   ChevronLeft,
   LogOut,
