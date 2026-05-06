@@ -26,7 +26,7 @@ interface Message {
   attachment?: { name: string; type: string };
 }
 
-type Section = "chat" | "voice" | "focus" | "tools";
+type Section = "chat" | "voice" | "focus" | "tools" | "viva";
 type SessionType = "Study Session" | "Assignment Work" | "Reading" | "Project Work" | "Revision";
 
 const SESSION_TYPES: SessionType[] = ["Study Session", "Assignment Work", "Reading", "Project Work", "Revision"];
