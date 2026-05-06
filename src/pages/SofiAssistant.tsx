@@ -580,3 +580,363 @@ function ToolsSection({ onUsePrompt }: { onUsePrompt: (prompt: string) => void }
     </div>
   );
 }
+
+// ─── VIVA / ORAL EXAM ──────────────────────────────────
+type VivaPhase = "setup" | "exam" | "results";
+type Difficulty = "Easy" | "Medium" | "Hard";
+interface VivaQA { question: string; answer: string; score: number; feedback: string; correct: string; encouragement: string; }
+
+function VivaSection() {
+  const [phase, setPhase] = useState<VivaPhase>("setup");
+  const [subject, setSubject] = useState("");
+  const [difficulty, setDifficulty] = useState<Difficulty>("Medium");
+  const [count, setCount] = useState<number>(5);
+  const [docName, setDocName] = useState<string | null>(null);
+  const [docContent, setDocContent] = useState<string>("");
+  const [extracting, setExtracting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const [qIndex, setQIndex] = useState(0);
+  const [currentQ, setCurrentQ] = useState("");
+  const [genLoading, setGenLoading] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const [recording, setRecording] = useState(false);
+  const recogRef = useRef<any>(null);
+  const [grading, setGrading] = useState(false);
+  const [lastGrade, setLastGrade] = useState<{ score: number; feedback: string; correct: string; encouragement: string } | null>(null);
+  const [history, setHistory] = useState<VivaQA[]>([]);
+
+  const speechSupported = typeof window !== "undefined" && (("SpeechRecognition" in window) || ("webkitSpeechRecognition" in window));
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) { toast.error("File too large (max 20MB)"); return; }
+    setExtracting(true);
+    try {
+      const text = await extractTextFromFile(file);
+      setDocContent(text.slice(0, 15000));
+      setDocName(file.name);
+      toast.success(`Loaded: ${file.name}`);
+    } catch {
+      toast.error("Could not read file");
+    } finally {
+      setExtracting(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const speak = (text: string) => {
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.95;
+      window.speechSynthesis.speak(u);
+    } catch {}
+  };
+
+  const callChat = async (system: string, user: string): Promise<string> => {
+    const resp = await fetch(CHAT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+      body: JSON.stringify({ messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
+    });
+    if (!resp.ok) await throwIfBadResponse(resp, "Viva");
+    const reader = resp.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = ""; let out = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf("\n")) !== -1) {
+        let line = buffer.slice(0, idx); buffer = buffer.slice(idx + 1);
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        if (!line.startsWith("data: ")) continue;
+        const j = line.slice(6).trim();
+        if (j === "[DONE]") break;
+        try { const p = JSON.parse(j); const c = p.choices?.[0]?.delta?.content; if (c) out += c; } catch {}
+      }
+    }
+    return out;
+  };
+
+  const generateQuestion = async (idx: number) => {
+    setGenLoading(true);
+    setCurrentQ("");
+    setTranscript("");
+    setLastGrade(null);
+    try {
+      const ctx = docName ? `Document: ${docName}\n\nContent:\n${docContent}\n\n` : "";
+      const subj = subject || "general study";
+      const sys = `You are a university examiner conducting an oral exam. Generate ONE ${difficulty.toLowerCase()} difficulty viva question${docName ? " strictly from the provided document" : ` on ${subj}`}. Return ONLY the question text, no numbering, no preface.`;
+      const user = `${ctx}Subject: ${subj}\nDifficulty: ${difficulty}\nQuestion ${idx + 1} of ${count}\n\nGenerate question ${idx + 1}. Avoid repeating prior questions: ${history.map((h) => h.question).join(" | ") || "none"}`;
+      const q = (await callChat(sys, user)).trim().replace(/^["']|["']$/g, "");
+      setCurrentQ(q);
+      speak(q);
+    } catch (e) {
+      handleAiError(e, "Viva");
+    } finally {
+      setGenLoading(false);
+    }
+  };
+
+  const start = () => {
+    if (!docName && !subject.trim()) { toast.error("Enter a subject or upload a document"); return; }
+    setHistory([]);
+    setQIndex(0);
+    setPhase("exam");
+    generateQuestion(0);
+  };
+
+  const toggleRecord = () => {
+    if (!speechSupported) return;
+    if (recording) { recogRef.current?.stop(); return; }
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const r = new SR();
+    r.lang = "en-US"; r.continuous = true; r.interimResults = true;
+    r.onresult = (e: any) => {
+      const t = Array.from(e.results).map((res: any) => res[0].transcript).join("");
+      setTranscript(t);
+    };
+    r.onend = () => setRecording(false);
+    r.onerror = () => { setRecording(false); };
+    r.start();
+    recogRef.current = r;
+    setRecording(true);
+  };
+
+  const submitAnswer = async () => {
+    if (!transcript.trim()) { toast.error("Please answer first"); return; }
+    if (recording) { recogRef.current?.stop(); }
+    setGrading(true);
+    try {
+      const ctx = docName ? `Document context:\n${docContent}\n\n` : "";
+      const sys = `You are a university examiner. Grade this student answer strictly out of 10. Return ONLY valid JSON: {"score": number, "feedback": "one sentence", "correct_answer": "brief correct answer", "encouragement": "one motivating sentence"}`;
+      const user = `${ctx}Question: ${currentQ}\n\nStudent answer: ${transcript.trim()}`;
+      const raw = await callChat(sys, user);
+      const start = raw.indexOf("{"); const end = raw.lastIndexOf("}");
+      let parsed: any = null;
+      if (start !== -1 && end !== -1) {
+        try { parsed = JSON.parse(raw.slice(start, end + 1)); } catch {}
+      }
+      const grade = {
+        score: Math.max(0, Math.min(10, Number(parsed?.score) || 0)),
+        feedback: parsed?.feedback || "Answer recorded.",
+        correct: parsed?.correct_answer || "",
+        encouragement: parsed?.encouragement || "Keep going!",
+      };
+      setLastGrade(grade);
+      setHistory((h) => [...h, { question: currentQ, answer: transcript.trim(), ...grade }]);
+      awardXpOnce(`viva-q-${Date.now()}-${Math.random()}`, 10);
+    } catch (e) {
+      handleAiError(e, "Viva");
+    } finally {
+      setGrading(false);
+    }
+  };
+
+  const next = () => {
+    const ni = qIndex + 1;
+    if (ni >= count) {
+      awardXpOnce(`viva-complete-${Date.now()}`, 50);
+      setPhase("results");
+      return;
+    }
+    setQIndex(ni);
+    generateQuestion(ni);
+  };
+
+  const retrySame = () => {
+    setHistory([]); setQIndex(0); setLastGrade(null); setPhase("exam"); generateQuestion(0);
+  };
+  const reset = () => {
+    setHistory([]); setQIndex(0); setLastGrade(null); setCurrentQ(""); setTranscript(""); setPhase("setup");
+  };
+
+  // ── SETUP ─────────
+  if (phase === "setup") {
+    return (
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-2xl mx-auto p-6 space-y-5">
+          <div className="text-center">
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-3"><Mic2 className="w-6 h-6 text-primary" /></div>
+            <h2 className="text-lg font-bold text-foreground">Viva Simulator</h2>
+            <p className="text-sm text-muted-foreground mt-1">Practice oral exams — by topic or from your own document</p>
+          </div>
+
+          <div className="glass-card rounded-2xl border border-border bg-card/60 p-5 space-y-4">
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">Subject (optional)</label>
+              <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder='e.g. "Data Structures", "Operating Systems"' className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring" />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">Difficulty</label>
+              <div className="flex gap-1.5">
+                {(["Easy", "Medium", "Hard"] as Difficulty[]).map((d) => (
+                  <button key={d} onClick={() => setDifficulty(d)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${difficulty === d ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>{d}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">Number of Questions</label>
+              <div className="flex gap-1.5">
+                {[3, 5, 10].map((n) => (
+                  <button key={n} onClick={() => setCount(n)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${count === n ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>{n}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-border">
+              <label className="text-xs font-medium text-muted-foreground">Document-based (optional)</label>
+              <input ref={fileRef} type="file" onChange={handleUpload} accept=".txt,.md,.csv,.pdf,.docx,.doc,.json,.xml,.html,.png,.jpg,.jpeg" className="hidden" />
+              <div className="flex items-center gap-2">
+                <button onClick={() => fileRef.current?.click()} disabled={extracting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-muted text-foreground text-sm font-medium hover:bg-muted/80 disabled:opacity-40">
+                  {extracting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Upload Document
+                </button>
+                {docName && (
+                  <span className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-primary/10 text-primary text-xs">
+                    <FileText className="w-3 h-3" /> {docName}
+                    <button onClick={() => { setDocName(null); setDocContent(""); }} className="ml-1 hover:text-destructive"><X className="w-3 h-3" /></button>
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground">Questions will be generated only from this document.</p>
+            </div>
+
+            <button onClick={start} className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+              <Play className="w-4 h-4" /> Start Viva
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── EXAM ─────────
+  if (phase === "exam") {
+    const progress = ((qIndex) / count) * 100;
+    return (
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-2xl mx-auto p-6 space-y-5">
+          <div>
+            <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
+              <span>Question {qIndex + 1} of {count}</span>
+              {docName && <span className="flex items-center gap-1"><FileText className="w-3 h-3" /> {docName}</span>}
+            </div>
+            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+              <motion.div className="h-full bg-primary" initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.4 }} />
+            </div>
+          </div>
+
+          <div className="glass-card rounded-2xl border border-border bg-card/60 p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0"><Sparkles className="w-4 h-4 text-primary" /></div>
+              <div className="flex-1 min-h-[3rem]">
+                {genLoading ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /> : (
+                  <>
+                    <p className="text-base font-medium text-foreground leading-relaxed">{currentQ}</p>
+                    <button onClick={() => speak(currentQ)} className="mt-2 text-xs text-muted-foreground hover:text-primary flex items-center gap-1"><Volume2 className="w-3 h-3" /> Repeat</button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {!lastGrade && (
+            <div className="flex flex-col items-center gap-3">
+              {speechSupported ? (
+                <motion.button
+                  onClick={toggleRecord}
+                  disabled={genLoading || grading}
+                  className={`w-24 h-24 rounded-full flex items-center justify-center transition-all relative ${recording ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground hover:opacity-90"} disabled:opacity-40`}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  {recording && (
+                    <motion.span
+                      className="absolute inset-0 rounded-full border-4 border-destructive"
+                      animate={{ scale: [1, 1.3, 1.3], opacity: [0.7, 0, 0] }}
+                      transition={{ duration: 1.4, repeat: Infinity }}
+                    />
+                  )}
+                  {recording ? <Square className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
+                </motion.button>
+              ) : (
+                <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} rows={4} placeholder="Voice not supported in this browser — type your answer" className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring" />
+              )}
+              {speechSupported && (
+                <p className="text-xs text-muted-foreground">{recording ? "Listening… click to stop" : "Tap mic to record your answer"}</p>
+              )}
+              {transcript && (
+                <div className="w-full p-3 rounded-lg bg-muted/40 text-sm text-foreground italic">{transcript}</div>
+              )}
+              <button onClick={submitAnswer} disabled={!transcript.trim() || grading || genLoading} className="px-5 py-2 rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-40 hover:opacity-90 flex items-center gap-2">
+                {grading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Submit Answer
+              </button>
+            </div>
+          )}
+
+          {lastGrade && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card rounded-2xl border border-border bg-card/60 p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-muted-foreground">Score</span>
+                <span className={`px-3 py-1 rounded-lg text-sm font-bold ${lastGrade.score >= 7 ? "bg-green-500/15 text-green-500" : lastGrade.score >= 4 ? "bg-yellow-500/15 text-yellow-600" : "bg-destructive/15 text-destructive"}`}>{lastGrade.score}/10</span>
+              </div>
+              <div><p className="text-xs text-muted-foreground">Feedback</p><p className="text-sm text-foreground">{lastGrade.feedback}</p></div>
+              {lastGrade.correct && <div><p className="text-xs text-muted-foreground">Correct answer</p><p className="text-sm text-foreground">{lastGrade.correct}</p></div>}
+              <p className="text-sm text-primary italic">{lastGrade.encouragement}</p>
+              <button onClick={next} className="w-full py-2 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 flex items-center justify-center gap-2">
+                {qIndex + 1 >= count ? <>See Results <Trophy className="w-4 h-4" /></> : <>Next Question <ArrowRight className="w-4 h-4" /></>}
+              </button>
+            </motion.div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── RESULTS ─────────
+  const total = history.reduce((s, h) => s + h.score, 0);
+  const max = history.length * 10;
+  const pct = max > 0 ? Math.round((total / max) * 100) : 0;
+  const grade = pct >= 90 ? "A" : pct >= 75 ? "B" : pct >= 60 ? "C" : pct >= 50 ? "D" : "F";
+  const data = history.map((h, i) => ({ name: `Q${i + 1}`, score: h.score }));
+
+  return (
+    <div className="flex-1 overflow-auto">
+      <div className="max-w-2xl mx-auto p-6 space-y-5">
+        <div className="text-center">
+          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-3"><Trophy className="w-7 h-7 text-primary" /></div>
+          <h2 className="text-lg font-bold text-foreground">Viva Complete!</h2>
+          <p className="text-sm text-muted-foreground mt-1">Here is how you did</p>
+        </div>
+
+        <div className="glass-card rounded-2xl border border-border bg-card/60 p-6 grid grid-cols-3 gap-4 text-center">
+          <div><p className="text-xs text-muted-foreground">Score</p><p className="text-2xl font-bold text-foreground">{total}/{max}</p></div>
+          <div><p className="text-xs text-muted-foreground">Percentage</p><p className="text-2xl font-bold text-foreground">{pct}%</p></div>
+          <div><p className="text-xs text-muted-foreground">Grade</p><p className={`text-2xl font-bold ${grade === "A" || grade === "B" ? "text-green-500" : grade === "C" ? "text-yellow-600" : "text-destructive"}`}>{grade}</p></div>
+        </div>
+
+        <div className="glass-card rounded-2xl border border-border bg-card/60 p-4">
+          <p className="text-xs font-medium text-muted-foreground mb-2 px-2">Per-question score</p>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={data}>
+              <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+              <YAxis domain={[0, 10]} stroke="hsl(var(--muted-foreground))" fontSize={11} />
+              <RTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+              <Bar dataKey="score" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={retrySame} className="flex-1 py-2.5 rounded-lg bg-muted text-foreground font-medium hover:bg-muted/80 flex items-center justify-center gap-2"><RefreshCw className="w-4 h-4" /> Retry Same Topic</button>
+          <button onClick={reset} className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> New Viva</button>
+        </div>
+      </div>
+    </div>
+  );
+}
