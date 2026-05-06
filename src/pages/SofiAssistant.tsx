@@ -119,6 +119,7 @@ export default function SofiAssistant() {
       {section === "voice" && <VoiceMode onSwitchToText={() => changeSection("chat")} />}
       {section === "focus" && <FocusSection />}
       {section === "tools" && <ToolsSection onUsePrompt={(p) => { setSharedPrompt(p); changeSection("chat"); }} />}
+      {section === "viva" && <VivaSection />}
     </div>
   );
 }
