@@ -853,6 +853,53 @@ function VivaSection() {
               <Play className="w-4 h-4" /> Start Viva
             </button>
           </div>
+
+          {viewingPast ? (
+            <div className="glass-card rounded-2xl border border-border bg-card/60 p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">{viewingPast.subject}</h3>
+                  <p className="text-[11px] text-muted-foreground">{new Date(viewingPast.date).toLocaleString()} · {viewingPast.difficulty} · {viewingPast.qa.length} questions</p>
+                </div>
+                <button onClick={() => setViewingPast(null)} className="text-xs text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-center py-2">
+                <div><p className="text-[10px] text-muted-foreground">Score</p><p className="text-lg font-bold">{viewingPast.total}/{viewingPast.max}</p></div>
+                <div><p className="text-[10px] text-muted-foreground">%</p><p className="text-lg font-bold">{viewingPast.pct}%</p></div>
+                <div><p className="text-[10px] text-muted-foreground">Grade</p><p className="text-lg font-bold text-primary">{viewingPast.grade}</p></div>
+              </div>
+              <div className="space-y-2 max-h-64 overflow-auto">
+                {viewingPast.qa.map((qa, i) => (
+                  <div key={i} className="p-2.5 rounded-lg bg-muted/40 text-xs space-y-1">
+                    <p className="font-medium text-foreground">Q{i + 1}. {qa.question}</p>
+                    <p className="text-muted-foreground"><span className="font-medium">You:</span> {qa.answer}</p>
+                    <p className="text-primary"><span className="font-medium">Score:</span> {qa.score}/10 — {qa.feedback}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : pastSessions.length > 0 && (
+            <div className="glass-card rounded-2xl border border-border bg-card/60 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><Trophy className="w-4 h-4 text-primary" /> Viva History</h3>
+                <button onClick={() => { setPastSessions([]); saveVivaHistory([]); }} className="text-[11px] text-muted-foreground hover:text-destructive">Clear all</button>
+              </div>
+              <div className="space-y-1.5 max-h-60 overflow-auto">
+                {pastSessions.map((s) => (
+                  <button key={s.id} onClick={() => setViewingPast(s)} className="w-full flex items-center justify-between p-2.5 rounded-lg bg-muted/40 hover:bg-muted text-left transition-colors">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">{s.subject}</p>
+                      <p className="text-[10px] text-muted-foreground">{new Date(s.date).toLocaleDateString()} · {s.difficulty} · {s.qa.length}Q</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs font-semibold">{s.pct}%</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold ${s.grade === "A" || s.grade === "B" ? "bg-green-500/15 text-green-500" : s.grade === "C" ? "bg-yellow-500/15 text-yellow-600" : "bg-destructive/15 text-destructive"}`}>{s.grade}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
