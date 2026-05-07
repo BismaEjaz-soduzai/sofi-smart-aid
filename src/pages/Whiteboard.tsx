@@ -28,7 +28,6 @@ function colorOf(c?: string) {
 }
 
 function tryParseJson(text: string): Element[] | null {
-  // find the first [ ... ] block
   const start = text.indexOf("[");
   const end = text.lastIndexOf("]");
   if (start === -1 || end === -1 || end < start) return null;
@@ -38,6 +37,63 @@ function tryParseJson(text: string): Element[] | null {
     if (Array.isArray(parsed)) return parsed as Element[];
   } catch {}
   return null;
+}
+
+// Auto-layout: if boxes from the AI overlap or sit out of bounds,
+// re-flow them onto a clean grid so nothing overlaps.
+const CANVAS_W = 800;
+const CANVAS_H = 500;
+const PAD = 30;
+const GAP = 24;
+
+function rectsOverlap(a: Box, b: Box) {
+  return !(a.x + a.w + GAP <= b.x || b.x + b.w + GAP <= a.x || a.y + a.h + GAP <= b.y || b.y + b.h + GAP <= a.y);
+}
+
+function relayoutIfNeeded(els: Element[]): Element[] {
+  const boxes = els.filter((e): e is Box => e.type === "box");
+  if (boxes.length === 0) return els;
+
+  let bad = false;
+  for (let i = 0; i < boxes.length && !bad; i++) {
+    const b = boxes[i];
+    if (b.x < 0 || b.y < 0 || b.x + b.w > CANVAS_W || b.y + b.h > CANVAS_H) bad = true;
+    for (let j = i + 1; j < boxes.length && !bad; j++) {
+      if (rectsOverlap(b, boxes[j])) bad = true;
+    }
+  }
+  if (!bad) return els;
+
+  // Re-flow on a grid
+  const n = boxes.length;
+  const cols = n <= 3 ? n : n <= 6 ? 3 : 4;
+  const rows = Math.ceil(n / cols);
+  const cellW = (CANVAS_W - PAD * 2) / cols;
+  const cellH = (CANVAS_H - PAD * 2) / rows;
+  const boxW = Math.min(160, cellW - GAP);
+  const boxH = Math.min(64, cellH - GAP);
+
+  const newBoxes: Box[] = boxes.map((b, i) => {
+    const r = Math.floor(i / cols);
+    const c = i % cols;
+    return {
+      ...b,
+      x: Math.round(PAD + c * cellW + (cellW - boxW) / 2),
+      y: Math.round(PAD + r * cellH + (cellH - boxH) / 2),
+      w: Math.round(boxW),
+      h: Math.round(boxH),
+    };
+  });
+
+  const boxMap = new Map(newBoxes.map((b) => [b.id, b]));
+  return els.map((e) => {
+    if (e.type === "box") return boxMap.get(e.id) || e;
+    if (e.type === "note") {
+      // clamp notes inside canvas
+      return { ...e, x: Math.max(10, Math.min(CANVAS_W - 10, e.x)), y: Math.max(20, Math.min(CANVAS_H - 10, e.y)) };
+    }
+    return e;
+  });
 }
 
 const DIAGRAM_SYSTEM = `You are a diagram generator. Given a topic, respond with ONLY a valid JSON array (no markdown, no prose) of diagram elements describing a clear visual explanation of the topic.
@@ -102,7 +158,7 @@ export default function Whiteboard() {
         }
       }
       const parsed = tryParseJson(raw);
-      if (parsed) setElements(parsed);
+      if (parsed) setElements(relayoutIfNeeded(parsed));
       else toast.message("Diagram unavailable", { description: "Showing explanation only." });
     } catch (e) {
       handleAiError(e, "Whiteboard");
