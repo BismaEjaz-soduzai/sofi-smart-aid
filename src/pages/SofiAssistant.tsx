@@ -759,10 +759,30 @@ function VivaSection() {
     }
   };
 
+  const persistSession = (qa: VivaQA[]) => {
+    if (qa.length === 0) return;
+    const total = qa.reduce((s, h) => s + h.score, 0);
+    const max = qa.length * 10;
+    const pct = max > 0 ? Math.round((total / max) * 100) : 0;
+    const grade = pct >= 90 ? "A" : pct >= 75 ? "B" : pct >= 60 ? "C" : pct >= 50 ? "D" : "F";
+    const entry: VivaHistoryEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      date: Date.now(),
+      subject: subject || (docName ? docName : "General"),
+      difficulty,
+      docName,
+      total, max, pct, grade, qa,
+    };
+    const updated = [entry, ...pastSessions];
+    setPastSessions(updated);
+    saveVivaHistory(updated);
+  };
+
   const next = () => {
     const ni = qIndex + 1;
     if (ni >= count) {
       awardXpOnce(`viva-complete-${Date.now()}`, 50);
+      persistSession(history);
       setPhase("results");
       return;
     }
