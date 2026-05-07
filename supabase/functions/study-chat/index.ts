@@ -1,5 +1,6 @@
 // SOFI Study Chat — multi-provider streaming edge function
 // Streams SSE in OpenAI-compatible format: data: {"choices":[{"delta":{"content":"..."}}]}\n\n
+// Provider priority: Groq → Gemini → OpenAI → Anthropic
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -8,8 +9,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const TEXT_SYSTEM =
-  "You are SOFI, a professional AI study assistant. Use markdown formatting with headers, bold, code blocks. Give concrete examples. End every response with a practice question or 2 actionable next steps. Expert in CS, Software Engineering, Math, Physics, Business.";
+const DEFAULT_SYSTEM =
+  "You are SOFI, an intelligent AI study assistant for university students. You help with studying, explaining concepts, creating study plans, generating quizzes, viva preparation, oral exam questions, essay outlines, flashcards, and general academic questions. Be concise, friendly, encouraging, and accurate. When asked to return JSON for structured tasks like grading or diagram data, return ONLY valid JSON with no markdown fences.";
 
 const VOICE_SYSTEM =
   "You are SOFI voice tutor. MAX 3-4 short sentences. Zero markdown. Natural speech: 'Think of it like...', 'Here is the key thing...'. After each point say Want me to continue? For quizzes say Here is your question: then ONE question. Always encouraging.";
@@ -42,7 +43,37 @@ const sseHeaders = {
   Connection: "keep-alive",
 };
 
-// ── Gemini (Google AI Studio, free) ─────────────────────────────────────────
+// ── Groq (OpenAI-compatible) ────────────────────────────────────────────────
+async function streamGroq(
+  apiKey: string,
+  systemPrompt: string,
+  messages: ChatMessage[],
+  maxTokens: number,
+): Promise<Response> {
+  const upstream = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      stream: true,
+      temperature: 0.7,
+      max_tokens: maxTokens,
+      messages: [{ role: "system", content: systemPrompt }, ...messages],
+    }),
+  });
+
+  if (!upstream.ok || !upstream.body) {
+    if (upstream.status === 429) return errorResponse("Rate limit reached — please wait a moment", 429);
+    const text = await upstream.text();
+    return errorResponse(`Groq error: ${text}`, upstream.status);
+  }
+  return new Response(upstream.body, { headers: sseHeaders });
+}
+
+// ── Gemini (Google AI Studio) ───────────────────────────────────────────────
 async function streamGemini(
   apiKey: string,
   systemPrompt: string,
@@ -206,71 +237,47 @@ async function streamAnthropic(
   return new Response(stream, { headers: sseHeaders });
 }
 
-// ── Lovable AI Gateway ──────────────────────────────────────────────────────
-async function streamLovable(
-  apiKey: string,
-  systemPrompt: string,
-  messages: ChatMessage[],
-  maxTokens: number,
-): Promise<Response> {
-  const upstream = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      stream: true,
-      temperature: 0.7,
-      max_tokens: maxTokens,
-      messages: [{ role: "system", content: systemPrompt }, ...messages],
-    }),
-  });
-
-  if (!upstream.ok || !upstream.body) {
-    // Preserve 429 / 402 so client can show friendly toasts
-    if (upstream.status === 429) {
-      return errorResponse("Rate limit reached — please wait a moment", 429);
-    }
-    if (upstream.status === 402) {
-      return errorResponse("AI credits exhausted — add credits in workspace settings", 402);
-    }
-    const text = await upstream.text();
-    return errorResponse(`Lovable AI error: ${text}`, upstream.status);
-  }
-  return new Response(upstream.body, { headers: sseHeaders });
-}
-
 // ── Main handler ────────────────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  let payload: { messages?: ChatMessage[]; voice_mode?: boolean };
+  let payload: { messages?: ChatMessage[]; voice_mode?: boolean; system?: string };
   try {
     payload = await req.json();
   } catch {
     return errorResponse("Invalid JSON body", 400);
   }
 
-  const messages = Array.isArray(payload.messages) ? payload.messages : [];
-  if (messages.length === 0) {
+  const incoming = Array.isArray(payload.messages) ? payload.messages : [];
+  if (incoming.length === 0) {
     return errorResponse("messages array is required", 400);
   }
 
   const voiceMode = !!payload.voice_mode;
-  const systemPrompt = voiceMode ? VOICE_SYSTEM : TEXT_SYSTEM;
+
+  // Honor a system message provided in the messages array, then explicit `system`, then defaults.
+  const messages: ChatMessage[] = [];
+  let systemPrompt = "";
+  for (const m of incoming) {
+    if (m.role === "system" && !systemPrompt) systemPrompt = m.content;
+    else messages.push(m);
+  }
+  if (!systemPrompt && typeof payload.system === "string" && payload.system.trim()) {
+    systemPrompt = payload.system;
+  }
+  if (!systemPrompt) systemPrompt = voiceMode ? VOICE_SYSTEM : DEFAULT_SYSTEM;
+
   const maxTokens = voiceMode ? 300 : 1500;
 
-  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+  const groqKey = Deno.env.get("GROQ_API_KEY");
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   const openaiKey = Deno.env.get("OPENAI_API_KEY");
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
 
   try {
-    if (lovableKey) return await streamLovable(lovableKey, systemPrompt, messages, maxTokens);
+    if (groqKey) return await streamGroq(groqKey, systemPrompt, messages, maxTokens);
     if (geminiKey) return await streamGemini(geminiKey, systemPrompt, messages, maxTokens);
     if (openaiKey) return await streamOpenAI(openaiKey, systemPrompt, messages, maxTokens);
     if (anthropicKey) return await streamAnthropic(anthropicKey, systemPrompt, messages, maxTokens);
@@ -279,5 +286,7 @@ serve(async (req) => {
     return errorResponse(err instanceof Error ? err.message : "Provider error");
   }
 
-  return errorResponse("AI backend is not configured.");
+  return errorResponse(
+    "No AI API key configured. Add GROQ_API_KEY to Supabase Edge Function Secrets at console.supabase.com",
+  );
 });
