@@ -585,6 +585,26 @@ function ToolsSection({ onUsePrompt }: { onUsePrompt: (prompt: string) => void }
 type VivaPhase = "setup" | "exam" | "results";
 type Difficulty = "Easy" | "Medium" | "Hard";
 interface VivaQA { question: string; answer: string; score: number; feedback: string; correct: string; encouragement: string; }
+interface VivaHistoryEntry {
+  id: string;
+  date: number;
+  subject: string;
+  difficulty: Difficulty;
+  docName: string | null;
+  total: number;
+  max: number;
+  pct: number;
+  grade: string;
+  qa: VivaQA[];
+}
+const VIVA_HISTORY_KEY = "sofi_viva_history_v1";
+
+function loadVivaHistory(): VivaHistoryEntry[] {
+  try { return JSON.parse(localStorage.getItem(VIVA_HISTORY_KEY) || "[]"); } catch { return []; }
+}
+function saveVivaHistory(items: VivaHistoryEntry[]) {
+  try { localStorage.setItem(VIVA_HISTORY_KEY, JSON.stringify(items.slice(0, 50))); } catch {}
+}
 
 function VivaSection() {
   const [phase, setPhase] = useState<VivaPhase>("setup");
@@ -605,6 +625,8 @@ function VivaSection() {
   const [grading, setGrading] = useState(false);
   const [lastGrade, setLastGrade] = useState<{ score: number; feedback: string; correct: string; encouragement: string } | null>(null);
   const [history, setHistory] = useState<VivaQA[]>([]);
+  const [pastSessions, setPastSessions] = useState<VivaHistoryEntry[]>(() => loadVivaHistory());
+  const [viewingPast, setViewingPast] = useState<VivaHistoryEntry | null>(null);
 
   const speechSupported = typeof window !== "undefined" && (("SpeechRecognition" in window) || ("webkitSpeechRecognition" in window));
 
