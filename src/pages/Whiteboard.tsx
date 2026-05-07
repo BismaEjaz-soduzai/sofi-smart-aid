@@ -158,7 +158,7 @@ export default function Whiteboard() {
         }
       }
       const parsed = tryParseJson(raw);
-      if (parsed) setElements(parsed);
+      if (parsed) setElements(relayoutIfNeeded(parsed));
       else toast.message("Diagram unavailable", { description: "Showing explanation only." });
     } catch (e) {
       handleAiError(e, "Whiteboard");
