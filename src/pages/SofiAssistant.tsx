@@ -814,7 +814,7 @@ function VivaSection() {
 
             <div className="space-y-2 pt-2 border-t border-border">
               <label className="text-xs font-medium text-muted-foreground">Document-based (optional)</label>
-              <input ref={fileRef} type="file" onChange={handleUpload} accept=".txt,.md,.csv,.pdf,.docx,.doc,.json,.xml,.html,.png,.jpg,.jpeg" className="hidden" />
+              <input ref={fileRef} type="file" onChange={handleUpload} accept=".txt,.md,.csv,.pdf,.docx,.doc,.ppt,.pptx,.xls,.xlsx,.json,.xml,.html,.rtf,.odt,.png,.jpg,.jpeg,.webp" className="hidden" />
               <div className="flex items-center gap-2">
                 <button onClick={() => fileRef.current?.click()} disabled={extracting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-muted text-foreground text-sm font-medium hover:bg-muted/80 disabled:opacity-40">
                   {extracting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Upload Document
